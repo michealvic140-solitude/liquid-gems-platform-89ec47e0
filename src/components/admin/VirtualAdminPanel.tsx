@@ -231,7 +231,7 @@ function Field({ label, value, onChange, step = 1 }: { label: string; value: num
 
 type Cfg = {
   teamAId: string; teamBId: string; teamAName: string; teamBName: string;
-  startInSec: number; lockInSec: number;
+  startInSec: number; lockInSec: number; matchCount: number;
   oddsA: number; oddsDraw: number; oddsB: number;
   oddsFirstA: number; oddsFirstB: number;
   totalLine: number; oddsOver: number; oddsUnder: number;
@@ -248,28 +248,39 @@ async function createRound(cfg: Cfg) {
   const catId = await getVirtualCategoryId();
   const start = new Date(Date.now() + cfg.startInSec * 1000);
   const lock = new Date(Date.now() + cfg.lockInSec * 1000);
-  const { data: match, error } = await supabase.from("matches").insert({
-    name: `${cfg.teamAName} vs ${cfg.teamBName}`,
-    home_team_id: cfg.teamAId, away_team_id: cfg.teamBId,
-    start_time: start.toISOString(), lock_time: lock.toISOString(),
-    status: "scheduled", is_virtual: true, category_id: catId,
-  }).select("id").single();
-  if (error) throw error;
-  const matchId = match.id;
+  const batchId = crypto.randomUUID();
+  const rounds = Math.max(4, Math.min(6, Math.round(cfg.matchCount || 4)));
+  const pickedPairs = [{ a: { id: cfg.teamAId, name: cfg.teamAName }, b: { id: cfg.teamBId, name: cfg.teamBName } }];
+  for (let i = 1; i < rounds; i++) {
+    const a = teamsCache[Math.floor(Math.random() * teamsCache.length)] ?? pickedPairs[0].a;
+    let b = teamsCache[Math.floor(Math.random() * teamsCache.length)] ?? pickedPairs[0].b;
+    if (teamsCache.length > 1) while (b.id === a.id) b = teamsCache[Math.floor(Math.random() * teamsCache.length)];
+    pickedPairs.push({ a, b });
+  }
+
+  for (const pair of pickedPairs) {
+    const { data: match, error } = await supabase.from("matches").insert({
+      name: `${pair.a.name} vs ${pair.b.name}`,
+      home_team_id: pair.a.id, away_team_id: pair.b.id,
+      start_time: start.toISOString(), lock_time: lock.toISOString(),
+      status: "scheduled", is_virtual: true, category_id: catId, virtual_round_batch_id: batchId,
+    }).select("id").single();
+    if (error) throw error;
+    const matchId = match.id;
 
   if (cfg.includeWinner) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "Match Winner" }).select("id").single();
     if (mk) await supabase.from("odds").insert([
-      { market_id: mk.id, label: cfg.teamAName, value: cfg.oddsA },
+      { market_id: mk.id, label: pair.a.name, value: cfg.oddsA },
       { market_id: mk.id, label: "Draw", value: cfg.oddsDraw },
-      { market_id: mk.id, label: cfg.teamBName, value: cfg.oddsB },
+      { market_id: mk.id, label: pair.b.name, value: cfg.oddsB },
     ]);
   }
   if (cfg.includeFirstBlood) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "First Blood" }).select("id").single();
     if (mk) await supabase.from("odds").insert([
-      { market_id: mk.id, label: cfg.teamAName, value: cfg.oddsFirstA },
-      { market_id: mk.id, label: cfg.teamBName, value: cfg.oddsFirstB },
+      { market_id: mk.id, label: pair.a.name, value: cfg.oddsFirstA },
+      { market_id: mk.id, label: pair.b.name, value: cfg.oddsFirstB },
     ]);
   }
   if (cfg.includeTotal) {
@@ -283,7 +294,8 @@ async function createRound(cfg: Cfg) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "Correct Score" }).select("id").single();
     if (mk) await supabase.from("odds").insert(DEFAULT_SCORES.map((s) => ({ market_id: mk.id, label: s, value: cfg.csOdds })));
   }
-  await supabase.from("audit_logs").insert({ action: "virtual_round_created", target_type: "match", target_id: matchId, metadata: { name: `${cfg.teamAName} vs ${cfg.teamBName}` } });
+    await supabase.from("audit_logs").insert({ action: "virtual_round_created", target_type: "match", target_id: matchId, metadata: { name: `${pair.a.name} vs ${pair.b.name}`, batch_id: batchId } });
+  }
 }
 
 function ComposerDialog({ teams, onClose, onSave }: { teams: TeamOpt[]; onClose: () => void; onSave: (c: Cfg) => Promise<void> }) {
