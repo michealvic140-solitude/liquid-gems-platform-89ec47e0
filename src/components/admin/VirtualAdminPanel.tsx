@@ -265,7 +265,7 @@ async function createRound(cfg: Cfg) {
       home_team_id: pair.a.id, away_team_id: pair.b.id,
       start_time: start.toISOString(), lock_time: lock.toISOString(),
       status: "scheduled", is_virtual: true, category_id: catId, virtual_round_batch_id: batchId,
-    }).select("id").single();
+    } as any).select("id").single();
     if (error) throw error;
     const matchId = match.id;
 
@@ -607,7 +607,7 @@ function VirtualWalletPanel() {
 
   async function saveConcurrent() {
     setBusy(true);
-    const { error } = await supabase.from("app_settings").update({ virtual_concurrent_rounds: Math.max(1, concurrent) }).eq("id", 1);
+    const { error } = await supabase.from("app_settings").update({ virtual_concurrent_rounds: Math.max(4, Math.min(6, concurrent)) }).eq("id", 1);
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success("Concurrency saved");
