@@ -1909,6 +1909,51 @@ export type Database = {
       }
     }
     Functions: {
+      admin_adjust_xp: {
+        Args: { delta: number; reason?: string; target_user: string }
+        Returns: Json
+      }
+      admin_broadcast: {
+        Args: { audience?: string; body: string; title: string }
+        Returns: Json
+      }
+      admin_delete_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_exposure_per_match: {
+        Args: never
+        Returns: {
+          exposure: number
+          match_id: string
+          match_name: string
+          picks: number
+        }[]
+      }
+      admin_lock_virtual_round: { Args: { match_id: string }; Returns: Json }
+      admin_pnl_summary: { Args: never; Returns: Json }
+      admin_refund_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_review_virtual_payout: {
+        Args: { decision: string; req_id: string }
+        Returns: Json
+      }
+      admin_risk_summary: { Args: never; Returns: Json }
+      admin_set_virtual_cycle: { Args: { seconds: number }; Returns: Json }
+      admin_suspend_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_unsuspend_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_void_bet: { Args: { bet_id: string }; Returns: Json }
+      apply_referral_code: { Args: { code: string }; Returns: Json }
+      approve_promo_request: { Args: { req_id: string }; Returns: Json }
+      claim_challenge: { Args: { challenge_id: string }; Returns: Json }
+      claim_daily_login: { Args: never; Returns: Json }
+      claim_task: { Args: { task_id: string }; Returns: Json }
+      create_withdrawal_request: {
+        Args: {
+          amount: number
+          gang_name: string
+          ingame_name: string
+          ticket_ref?: string
+        }
+        Returns: Json
+      }
+      decline_promo_request: { Args: { req_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1916,7 +1961,36 @@ export type Database = {
         }
         Returns: boolean
       }
+      house_manual_adjust: {
+        Args: { delta: number; reason: string }
+        Returns: Json
+      }
+      house_set_paused: {
+        Args: { paused: boolean; reason?: string }
+        Returns: Json
+      }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      place_virtual_ticket: { Args: { payload: Json }; Returns: Json }
+      redeem_promo_code: { Args: { code: string }; Returns: Json }
+      resolve_virtual_round: { Args: { match_id: string }; Returns: Json }
+      review_gang_emblem: {
+        Args: { decision: string; emblem_id: string }
+        Returns: Json
+      }
+      review_withdrawal_request: {
+        Args: { decision: string; note?: string; req_id: string }
+        Returns: Json
+      }
+      server_now: { Args: never; Returns: string }
+      settle_pay_winning_bet: { Args: { bet_id: string }; Returns: Json }
+      user_cashout_bet: { Args: { bet_id: string }; Returns: Json }
+      verify_xp_consistency: { Args: never; Returns: Json }
+      virtual_tick: { Args: never; Returns: Json }
+      virtual_wallet_admin_adjust: {
+        Args: { delta: number; reason: string }
+        Returns: Json
+      }
+      wipe_all_tokens: { Args: never; Returns: Json }
     }
     Enums: {
       app_role:
