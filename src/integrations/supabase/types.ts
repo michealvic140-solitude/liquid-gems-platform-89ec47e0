@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      advertisements: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string
+          is_active: boolean
+          link_url: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url: string
+          is_active?: boolean
+          link_url?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string
+          is_active?: boolean
+          link_url?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      announcements: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          image_url: string | null
+          is_active: boolean
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          title: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          title?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           about_us: string | null
@@ -63,9 +117,11 @@ export type Database = {
           vapid_subject: string | null
           vip_enabled: boolean
           vip_token_multipliers: Json
+          virtual_concurrent_rounds: number
           virtual_max_stake: number
           virtual_min_stake: number
           virtual_payout_multiplier: number
+          virtual_round_duration_seconds: number
           virtual_win_bonus_tokens: number
           virtual_xp_per_win: number
           why_trust_us: string | null
@@ -122,9 +178,11 @@ export type Database = {
           vapid_subject?: string | null
           vip_enabled?: boolean
           vip_token_multipliers?: Json
+          virtual_concurrent_rounds?: number
           virtual_max_stake?: number
           virtual_min_stake?: number
           virtual_payout_multiplier?: number
+          virtual_round_duration_seconds?: number
           virtual_win_bonus_tokens?: number
           virtual_xp_per_win?: number
           why_trust_us?: string | null
@@ -181,9 +239,11 @@ export type Database = {
           vapid_subject?: string | null
           vip_enabled?: boolean
           vip_token_multipliers?: Json
+          virtual_concurrent_rounds?: number
           virtual_max_stake?: number
           virtual_min_stake?: number
           virtual_payout_multiplier?: number
+          virtual_round_duration_seconds?: number
           virtual_win_bonus_tokens?: number
           virtual_xp_per_win?: number
           why_trust_us?: string | null
@@ -221,6 +281,36 @@ export type Database = {
           metadata?: Json
           target_id?: string | null
           target_type?: string | null
+        }
+        Relationships: []
+      }
+      ban_appeals: {
+        Row: {
+          admin_response: string | null
+          created_at: string
+          id: string
+          message: string
+          reviewed_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_response?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          reviewed_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_response?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          reviewed_at?: string | null
+          status?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -272,6 +362,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "markets"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bet_selections_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "hot_bets_v1"
+            referencedColumns: ["match_id"]
           },
           {
             foreignKeyName: "bet_selections_match_id_fkey"
@@ -334,6 +431,30 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcasts: {
+        Row: {
+          audience: string
+          body: string | null
+          created_at: string
+          id: string
+          title: string
+        }
+        Insert: {
+          audience?: string
+          body?: string | null
+          created_at?: string
+          id?: string
+          title: string
+        }
+        Update: {
+          audience?: string
+          body?: string | null
+          created_at?: string
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -352,6 +473,194 @@ export type Database = {
           icon?: string | null
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      challenges: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          kind: string
+          reward_tokens: number
+          reward_xp: number
+          target: number
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          kind: string
+          reward_tokens?: number
+          reward_xp?: number
+          target?: number
+          title: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          kind?: string
+          reward_tokens?: number
+          reward_xp?: number
+          target?: number
+          title?: string
+        }
+        Relationships: []
+      }
+      chat_message_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          id: string
+          image_url: string | null
+          room: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          image_url?: string | null
+          room?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          image_url?: string | null
+          room?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      events: {
+        Row: {
+          banner_url: string | null
+          created_at: string
+          description: string | null
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          title: string
+        }
+        Insert: {
+          banner_url?: string | null
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          title: string
+        }
+        Update: {
+          banner_url?: string | null
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          title?: string
+        }
+        Relationships: []
+      }
+      gang_emblems: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      highlights: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          media_type: string
+          media_url: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          media_type?: string
+          media_url: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          media_type?: string
+          media_url?: string
+          title?: string
         }
         Relationships: []
       }
@@ -429,6 +738,36 @@ export type Database = {
         }
         Relationships: []
       }
+      leaderboard_overrides: {
+        Row: {
+          bonus_points: number
+          created_at: string
+          id: string
+          kind: string
+          manual_rank: number | null
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          bonus_points?: number
+          created_at?: string
+          id?: string
+          kind: string
+          manual_rank?: number | null
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          bonus_points?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          manual_rank?: number | null
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       markets: {
         Row: {
           created_at: string
@@ -452,6 +791,13 @@ export type Database = {
           name?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "markets_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "hot_bets_v1"
+            referencedColumns: ["match_id"]
+          },
           {
             foreignKeyName: "markets_match_id_fkey"
             columns: ["match_id"]
@@ -575,6 +921,63 @@ export type Database = {
           },
         ]
       }
+      notification_prefs: {
+        Row: {
+          bets: boolean
+          chat: boolean
+          promos: boolean
+          results: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bets?: boolean
+          chat?: boolean
+          promos?: boolean
+          results?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bets?: boolean
+          chat?: boolean
+          promos?: boolean
+          results?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          link: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          link?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          link?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       odds: {
         Row: {
           id: string
@@ -606,6 +1009,44 @@ export type Database = {
             columns: ["market_id"]
             isOneToOne: false
             referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      players: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          is_substitute: boolean
+          name: string
+          position: string | null
+          team_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_substitute?: boolean
+          name: string
+          position?: string | null
+          team_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_substitute?: boolean
+          name?: string
+          position?: string | null
+          team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
@@ -724,6 +1165,300 @@ export type Database = {
         }
         Relationships: []
       }
+      promo_code_requests: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          usage_limit: number
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          usage_limit?: number
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          usage_limit?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      promo_code_usage_v2: {
+        Row: {
+          amount: number
+          id: string
+          promo_id: string
+          redeemed_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          id?: string
+          promo_id: string
+          redeemed_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          id?: string
+          promo_id?: string
+          redeemed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_code_usage_v2_promo_id_fkey"
+            columns: ["promo_id"]
+            isOneToOne: false
+            referencedRelation: "promo_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promo_codes: {
+        Row: {
+          amount: number
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          usage_limit: number
+          used_count: number
+        }
+        Insert: {
+          amount?: number
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          usage_limit?: number
+          used_count?: number
+        }
+        Update: {
+          amount?: number
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          usage_limit?: number
+          used_count?: number
+        }
+        Relationships: []
+      }
+      promo_redemptions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          promo_id: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          promo_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          promo_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_redemptions_promo_id_fkey"
+            columns: ["promo_id"]
+            isOneToOne: false
+            referencedRelation: "promo_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          created_at: string
+          id: string
+          referee_bonus: number
+          referee_id: string
+          referrer_bonus: number
+          referrer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          referee_bonus?: number
+          referee_id: string
+          referrer_bonus?: number
+          referrer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          referee_bonus?: number
+          referee_id?: string
+          referrer_bonus?: number
+          referrer_id?: string
+        }
+        Relationships: []
+      }
+      season_points: {
+        Row: {
+          id: string
+          points: number
+          season_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          points?: number
+          season_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          points?: number
+          season_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "season_points_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "seasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seasons: {
+        Row: {
+          created_at: string
+          description: string | null
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          starts_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          starts_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          starts_at?: string
+        }
+        Relationships: []
+      }
+      spotlights: {
+        Row: {
+          body: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          headline: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          link_url: string | null
+          message: string | null
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          headline?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          link_url?: string | null
+          message?: string | null
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          headline?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          link_url?: string | null
+          message?: string | null
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      support_tickets: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          status: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          subject: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       teams: {
         Row: {
           created_at: string
@@ -747,6 +1482,41 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      ticket_messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          image_url: string | null
+          ticket_id: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          ticket_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          ticket_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       token_requests: {
         Row: {
@@ -820,6 +1590,63 @@ export type Database = {
         }
         Relationships: []
       }
+      user_achievements: {
+        Row: {
+          awarded_at: string
+          code: string
+          description: string | null
+          icon: string | null
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          awarded_at?: string
+          code: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          awarded_at?: string
+          code?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_challenge_progress: {
+        Row: {
+          challenge_id: string
+          claimed_at: string | null
+          id: string
+          progress: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenge_id: string
+          claimed_at?: string | null
+          id?: string
+          progress?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          challenge_id?: string
+          claimed_at?: string | null
+          id?: string
+          progress?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           assigned_by: string | null
@@ -861,6 +1688,159 @@ export type Database = {
           last_seen?: string
           route?: string | null
           user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          id: string
+          reward_tokens: number
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          reward_tokens?: number
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          reward_tokens?: number
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      virtual_house_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          bet_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          reason: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount: number
+          balance_after?: number
+          bet_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          reason?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          bet_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          reason?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      virtual_house_wallet: {
+        Row: {
+          balance: number
+          id: number
+          total_in: number
+          total_out: number
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          id?: number
+          total_in?: number
+          total_out?: number
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          id?: number
+          total_in?: number
+          total_out?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      virtual_payout_requests: {
+        Row: {
+          amount: number
+          bet_id: string | null
+          created_at: string
+          id: string
+          match_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          stake: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          bet_id?: string | null
+          created_at?: string
+          id?: string
+          match_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          stake?: number
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          bet_id?: string | null
+          created_at?: string
+          id?: string
+          match_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          stake?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      watchlist: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
           user_id?: string
         }
         Relationships: []
@@ -909,7 +1889,24 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      hot_bets_v1: {
+        Row: {
+          avg_odds: number | null
+          bets_count: number | null
+          last_picked_at: string | null
+          market_name: string | null
+          match_id: string | null
+          match_name: string | null
+          match_start: string | null
+          odds: number | null
+          picks: number | null
+          selection_label: string | null
+          stake_volume: number | null
+          total_stake: number | null
+          users_count: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
