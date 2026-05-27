@@ -207,7 +207,7 @@ function VirtualRoundCard({ match, animSec }: { match: MatchRow & { lock_time?: 
       match_id: match.id, match_name: `${home} vs ${away}`,
       market_id: mk.id, market_name: mk.name,
       odd_id: o.id, selection_label: o.label, odds: Number(o.value),
-      is_virtual: true,
+      is_virtual: true, virtual_round_batch_id: (match as any).virtual_round_batch_id ?? match.id,
     });
     setOpen(true);
   }
