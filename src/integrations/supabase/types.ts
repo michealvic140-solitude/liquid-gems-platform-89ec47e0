@@ -852,6 +852,7 @@ export type Database = {
           status: Database["public"]["Enums"]["match_status"]
           updated_at: string
           virtual_first_blood_team_id: string | null
+          virtual_round_batch_id: string | null
           winner_team_id: string | null
         }
         Insert: {
@@ -877,6 +878,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["match_status"]
           updated_at?: string
           virtual_first_blood_team_id?: string | null
+          virtual_round_batch_id?: string | null
           winner_team_id?: string | null
         }
         Update: {
@@ -902,6 +904,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["match_status"]
           updated_at?: string
           virtual_first_blood_team_id?: string | null
+          virtual_round_batch_id?: string | null
           winner_team_id?: string | null
         }
         Relationships: [
@@ -2018,7 +2021,7 @@ export type Database = {
           _away_score?: number
           _first_blood_team_id?: string
           _home_score?: number
-          match_id: string
+          _match_id: string
         }
         Returns: Json
       }
