@@ -23,7 +23,7 @@ export const Route = createFileRoute("/virtual")({
 });
 
 const matchSelect = `
-  id,name,status,start_time,location,is_featured,home_score,away_score,is_virtual,lock_time,
+  id,name,status,start_time,location,is_featured,home_score,away_score,is_virtual,lock_time,virtual_round_batch_id,
   home_team:teams!home_team_id(id,name,logo_url,gang_type),
   away_team:teams!away_team_id(id,name,logo_url,gang_type),
   markets(id,name,is_open,odds(id,label,value,is_winner,market_id))
@@ -193,17 +193,12 @@ function VirtualRoundCard({ match, animSec }: { match: MatchRow & { lock_time?: 
   const playing = match.status === "live";
   const locked = settled || playing || cd.done;
   const isPicked = (oddId: string) => selections.some((s) => s.odd_id === oddId);
-  const hasThisRound = selections.some((s) => s.match_id === match.id);
 
   const order = (n: string) => /match\s*winner/i.test(n) ? 0 : /first\s*blood/i.test(n) ? 1 : /total/i.test(n) ? 2 : /correct\s*score/i.test(n) ? 3 : 4;
   const markets = [...(match.markets ?? [])].sort((a, b) => order(a.name) - order(b.name));
 
   function pick(mk: any, o: any) {
     if (locked) return;
-    if (hasThisRound && !isPicked(o.id)) {
-      toast.error("You can only select one market from the same virtual round.");
-      return;
-    }
     if (selections.length > 0 && selections.some((s) => !s.is_virtual)) {
       toast.error("Your slip has regular bets. Clear it before adding virtual selections.");
       return;
