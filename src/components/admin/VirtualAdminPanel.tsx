@@ -303,7 +303,7 @@ function ComposerDialog({ teams, onClose, onSave }: { teams: TeamOpt[]; onClose:
   const [cfg, setCfg] = useState<Cfg>({
     teamAId: teams[0]?.id ?? "", teamBId: teams[1]?.id ?? "",
     teamAName: teams[0]?.name ?? "", teamBName: teams[1]?.name ?? "",
-    startInSec: 5, lockInSec: 35,
+    startInSec: 5, lockInSec: 35, matchCount: 4, teamPool: teams,
     oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95,
     oddsFirstA: 1.95, oddsFirstB: 1.95,
     totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85,
@@ -338,6 +338,7 @@ function ComposerDialog({ teams, onClose, onSave }: { teams: TeamOpt[]; onClose:
             </div>
             <div><Label>Start in (sec)</Label><Input type="number" value={cfg.startInSec} onChange={(e) => upd("startInSec", +e.target.value)} /></div>
             <div><Label>Lock at (sec from now)</Label><Input type="number" value={cfg.lockInSec} onChange={(e) => upd("lockInSec", +e.target.value)} /></div>
+            <div><Label>Matches in round</Label><Input type="number" min={4} max={6} value={cfg.matchCount} onChange={(e) => upd("matchCount", +e.target.value)} /></div>
           </div>
 
           <MarketBlock label="Match Winner" enabled={cfg.includeWinner} onToggle={(v) => upd("includeWinner", v)}>
