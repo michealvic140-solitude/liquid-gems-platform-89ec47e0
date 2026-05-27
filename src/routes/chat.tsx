@@ -111,11 +111,11 @@ function Room({ room, muted }: { room: Room; muted: boolean }) {
     e.preventDefault();
     if (!user || !text.trim()) return;
     if (editing) {
-      const { error } = await supabase.from("chat_messages").update({ content: text.trim(), edited_at: new Date().toISOString() }).eq("id", editing.id);
+      const { error } = await supabase.from("chat_messages").update({ content: text.trim(), edited_at: new Date().toISOString() } as any).eq("id", editing.id);
       if (error) toast.error(error.message); else { setEditing(null); setText(""); }
       return;
     }
-    const { error } = await supabase.from("chat_messages").insert({ user_id: user.id, room, content: text.trim(), reply_to_id: replyTo?.id ?? null });
+    const { error } = await supabase.from("chat_messages").insert({ user_id: user.id, room, content: text.trim(), reply_to_id: replyTo?.id ?? null } as any);
     if (error) toast.error(error.message); else { setText(""); setReplyTo(null); }
   }
 
@@ -125,7 +125,7 @@ function Room({ room, muted }: { room: Room; muted: boolean }) {
     const { error: ue } = await supabase.storage.from("chat-images").upload(path, file);
     if (ue) { toast.error(ue.message); return; }
     const { data: { publicUrl } } = supabase.storage.from("chat-images").getPublicUrl(path);
-    await supabase.from("chat_messages").insert({ user_id: user.id, room, image_url: publicUrl, reply_to_id: replyTo?.id ?? null });
+    await supabase.from("chat_messages").insert({ user_id: user.id, room, image_url: publicUrl, reply_to_id: replyTo?.id ?? null } as any);
     setReplyTo(null);
   }
 
