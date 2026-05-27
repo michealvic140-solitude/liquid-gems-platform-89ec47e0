@@ -64,9 +64,9 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   const requiredSelections = isVirtualTicket ? 1 : 2;
 
   useEffect(() => {
-    supabase.from("app_settings").select("min_stake,max_payout,virtual_min_stake,virtual_max_payout").eq("id", 1).maybeSingle()
+    supabase.from("app_settings").select("*").eq("id", 1).maybeSingle()
       .then(({ data }) => {
-        const nextMin = isVirtualTicket ? (data as any)?.virtual_min_stake : data?.min_stake;
+        const nextMin = isVirtualTicket ? (data as any)?.virtual_min_stake : (data as any)?.min_stake;
         const nextMax = isVirtualTicket ? (data as any)?.virtual_max_payout : (data as any)?.max_payout;
         if (nextMin !== null && nextMin !== undefined) setMinStake(Number(nextMin));
         if (nextMax !== null && nextMax !== undefined) setMaxPayout(Number(nextMax));
