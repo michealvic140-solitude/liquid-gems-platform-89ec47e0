@@ -117,8 +117,15 @@ export type Database = {
           vapid_subject: string | null
           vip_enabled: boolean
           vip_token_multipliers: Json
+          virtual_animation_seconds: number
           virtual_concurrent_rounds: number
+          virtual_cycle_last_tick: string | null
+          virtual_cycle_running: boolean
+          virtual_max_payout: number
+          virtual_max_score: number
+          virtual_max_selections: number
           virtual_max_stake: number
+          virtual_min_selections: number
           virtual_min_stake: number
           virtual_payout_multiplier: number
           virtual_round_duration_seconds: number
@@ -178,8 +185,15 @@ export type Database = {
           vapid_subject?: string | null
           vip_enabled?: boolean
           vip_token_multipliers?: Json
+          virtual_animation_seconds?: number
           virtual_concurrent_rounds?: number
+          virtual_cycle_last_tick?: string | null
+          virtual_cycle_running?: boolean
+          virtual_max_payout?: number
+          virtual_max_score?: number
+          virtual_max_selections?: number
           virtual_max_stake?: number
+          virtual_min_selections?: number
           virtual_min_stake?: number
           virtual_payout_multiplier?: number
           virtual_round_duration_seconds?: number
@@ -239,8 +253,15 @@ export type Database = {
           vapid_subject?: string | null
           vip_enabled?: boolean
           vip_token_multipliers?: Json
+          virtual_animation_seconds?: number
           virtual_concurrent_rounds?: number
+          virtual_cycle_last_tick?: string | null
+          virtual_cycle_running?: boolean
+          virtual_max_payout?: number
+          virtual_max_score?: number
+          virtual_max_selections?: number
           virtual_max_stake?: number
+          virtual_min_selections?: number
           virtual_min_stake?: number
           virtual_payout_multiplier?: number
           virtual_round_duration_seconds?: number
@@ -1072,6 +1093,7 @@ export type Database = {
           is_banned: boolean
           is_muted: boolean
           is_restricted: boolean
+          last_kicked_at: string | null
           last_login_date: string | null
           longest_streak: number
           mute_reason: string | null
@@ -1109,6 +1131,7 @@ export type Database = {
           is_banned?: boolean
           is_muted?: boolean
           is_restricted?: boolean
+          last_kicked_at?: string | null
           last_login_date?: string | null
           longest_streak?: number
           mute_reason?: string | null
@@ -1146,6 +1169,7 @@ export type Database = {
           is_banned?: boolean
           is_muted?: boolean
           is_restricted?: boolean
+          last_kicked_at?: string | null
           last_login_date?: string | null
           longest_streak?: number
           mute_reason?: string | null
@@ -1410,7 +1434,7 @@ export type Database = {
           is_active?: boolean
           link_url?: string | null
           message?: string | null
-          title: string
+          title?: string
           user_id?: string | null
         }
         Update: {
@@ -1910,11 +1934,16 @@ export type Database = {
     }
     Functions: {
       admin_adjust_xp: {
-        Args: { delta: number; reason?: string; target_user: string }
+        Args: { _delta: number; _reason?: string; user_id: string }
         Returns: Json
       }
       admin_broadcast: {
-        Args: { audience?: string; body: string; title: string }
+        Args: {
+          _body?: string
+          _link?: string
+          _segment?: string
+          title: string
+        }
         Returns: Json
       }
       admin_delete_bet: { Args: { bet_id: string }; Returns: Json }
@@ -1928,32 +1957,38 @@ export type Database = {
         }[]
       }
       admin_lock_virtual_round: { Args: { match_id: string }; Returns: Json }
-      admin_pnl_summary: { Args: never; Returns: Json }
+      admin_pnl_summary: { Args: { days?: number }; Returns: Json }
       admin_refund_bet: { Args: { bet_id: string }; Returns: Json }
       admin_review_virtual_payout: {
-        Args: { decision: string; req_id: string }
+        Args: { _approve: boolean; _reason?: string; id: string }
         Returns: Json
       }
       admin_risk_summary: { Args: never; Returns: Json }
-      admin_set_virtual_cycle: { Args: { seconds: number }; Returns: Json }
+      admin_set_virtual_cycle: { Args: { _running: boolean }; Returns: Json }
       admin_suspend_bet: { Args: { bet_id: string }; Returns: Json }
       admin_unsuspend_bet: { Args: { bet_id: string }; Returns: Json }
       admin_void_bet: { Args: { bet_id: string }; Returns: Json }
       apply_referral_code: { Args: { code: string }; Returns: Json }
-      approve_promo_request: { Args: { req_id: string }; Returns: Json }
-      claim_challenge: { Args: { challenge_id: string }; Returns: Json }
+      approve_promo_request: {
+        Args: { _note?: string; id: string }
+        Returns: Json
+      }
+      claim_challenge: { Args: { progress_id: string }; Returns: Json }
       claim_daily_login: { Args: never; Returns: Json }
       claim_task: { Args: { task_id: string }; Returns: Json }
       create_withdrawal_request: {
         Args: {
+          _gang: string
+          _ingame: string
+          _ticket?: string
           amount: number
-          gang_name: string
-          ingame_name: string
-          ticket_ref?: string
         }
         Returns: Json
       }
-      decline_promo_request: { Args: { req_id: string }; Returns: Json }
+      decline_promo_request: {
+        Args: { _note?: string; id: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1962,7 +1997,7 @@ export type Database = {
         Returns: boolean
       }
       house_manual_adjust: {
-        Args: { delta: number; reason: string }
+        Args: { _reason: string; amount: number }
         Returns: Json
       }
       house_set_paused: {
@@ -1970,21 +2005,35 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
-      place_virtual_ticket: { Args: { payload: Json }; Returns: Json }
+      place_bet_ticket: {
+        Args: { _selections: Json; _stake: number }
+        Returns: Json
+      }
+      place_virtual_ticket:
+        | { Args: { _selections: Json; _stake: number }; Returns: Json }
+        | { Args: { payload: Json }; Returns: Json }
       redeem_promo_code: { Args: { code: string }; Returns: Json }
-      resolve_virtual_round: { Args: { match_id: string }; Returns: Json }
+      resolve_virtual_round: {
+        Args: {
+          _away_score?: number
+          _first_blood_team_id?: string
+          _home_score?: number
+          match_id: string
+        }
+        Returns: Json
+      }
       review_gang_emblem: {
-        Args: { decision: string; emblem_id: string }
+        Args: { _approve: boolean; _note?: string; id: string }
         Returns: Json
       }
       review_withdrawal_request: {
-        Args: { decision: string; note?: string; req_id: string }
+        Args: { _approve: boolean; _note?: string; id: string }
         Returns: Json
       }
       server_now: { Args: never; Returns: string }
       settle_pay_winning_bet: { Args: { bet_id: string }; Returns: Json }
       user_cashout_bet: { Args: { bet_id: string }; Returns: Json }
-      verify_xp_consistency: { Args: never; Returns: Json }
+      verify_xp_consistency: { Args: { user_id?: string }; Returns: Json }
       virtual_tick: { Args: never; Returns: Json }
       virtual_wallet_admin_adjust: {
         Args: { delta: number; reason: string }
