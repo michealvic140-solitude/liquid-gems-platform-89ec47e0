@@ -930,9 +930,17 @@ export type Database = {
         | "sponsor"
         | "moderator"
         | "admin"
-      bet_status: "pending" | "won" | "lost" | "void" | "cashed_out"
+      bet_status:
+        | "pending"
+        | "won"
+        | "lost"
+        | "void"
+        | "cashed_out"
+        | "refunded"
+        | "cancelled"
+        | "open"
       gang_type: "G" | "F"
-      match_status: "upcoming" | "live" | "ended" | "cancelled"
+      match_status: "upcoming" | "live" | "ended" | "cancelled" | "scheduled"
       request_status: "pending" | "approved" | "declined" | "denied"
       selection_result: "won" | "lost" | "void"
     }
@@ -1071,9 +1079,18 @@ export const Constants = {
         "moderator",
         "admin",
       ],
-      bet_status: ["pending", "won", "lost", "void", "cashed_out"],
+      bet_status: [
+        "pending",
+        "won",
+        "lost",
+        "void",
+        "cashed_out",
+        "refunded",
+        "cancelled",
+        "open",
+      ],
       gang_type: ["G", "F"],
-      match_status: ["upcoming", "live", "ended", "cancelled"],
+      match_status: ["upcoming", "live", "ended", "cancelled", "scheduled"],
       request_status: ["pending", "approved", "declined", "denied"],
       selection_result: ["won", "lost", "void"],
     },
