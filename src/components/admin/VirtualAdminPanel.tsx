@@ -73,7 +73,7 @@ export function VirtualAdminPanel() {
     let b = teams[Math.floor(Math.random() * teams.length)];
     while (b.id === a.id) b = teams[Math.floor(Math.random() * teams.length)];
     try {
-      await createRound({ teamAId: a.id, teamBId: b.id, teamAName: a.name, teamBName: b.name, startInSec: 5, lockInSec: 35, oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95, totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85, oddsFirstA: 1.95, oddsFirstB: 1.95, csOdds: 7, includeWinner: true, includeFirstBlood: true, includeTotal: true, includeCS: true });
+      await createRound({ teamAId: a.id, teamBId: b.id, teamAName: a.name, teamBName: b.name, startInSec: 5, lockInSec: 35, matchCount: 4, teamPool: teams, oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95, totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85, oddsFirstA: 1.95, oddsFirstB: 1.95, csOdds: 7, includeWinner: true, includeFirstBlood: true, includeTotal: true, includeCS: true });
       toast.success("Round created");
     } catch (e: any) { toast.error(e.message); }
   }
@@ -231,7 +231,7 @@ function Field({ label, value, onChange, step = 1 }: { label: string; value: num
 
 type Cfg = {
   teamAId: string; teamBId: string; teamAName: string; teamBName: string;
-  startInSec: number; lockInSec: number; matchCount: number;
+  startInSec: number; lockInSec: number; matchCount: number; teamPool?: TeamOpt[];
   oddsA: number; oddsDraw: number; oddsB: number;
   oddsFirstA: number; oddsFirstB: number;
   totalLine: number; oddsOver: number; oddsUnder: number;
@@ -250,6 +250,7 @@ async function createRound(cfg: Cfg) {
   const lock = new Date(Date.now() + cfg.lockInSec * 1000);
   const batchId = crypto.randomUUID();
   const rounds = Math.max(4, Math.min(6, Math.round(cfg.matchCount || 4)));
+  const teamsCache = cfg.teamPool?.length ? cfg.teamPool : [{ id: cfg.teamAId, name: cfg.teamAName }, { id: cfg.teamBId, name: cfg.teamBName }];
   const pickedPairs = [{ a: { id: cfg.teamAId, name: cfg.teamAName }, b: { id: cfg.teamBId, name: cfg.teamBName } }];
   for (let i = 1; i < rounds; i++) {
     const a = teamsCache[Math.floor(Math.random() * teamsCache.length)] ?? pickedPairs[0].a;
