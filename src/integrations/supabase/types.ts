@@ -571,8 +571,10 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
+          edited_at: string | null
           id: string
           image_url: string | null
+          reply_to_id: string | null
           room: string
           user_id: string
         }
@@ -581,8 +583,10 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          edited_at?: string | null
           id?: string
           image_url?: string | null
+          reply_to_id?: string | null
           room?: string
           user_id: string
         }
@@ -591,12 +595,22 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          edited_at?: string | null
           id?: string
           image_url?: string | null
+          reply_to_id?: string | null
           room?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       events: {
         Row: {
@@ -2036,6 +2050,7 @@ export type Database = {
       server_now: { Args: never; Returns: string }
       settle_pay_winning_bet: { Args: { bet_id: string }; Returns: Json }
       user_cashout_bet: { Args: { bet_id: string }; Returns: Json }
+      user_claim_virtual_payout: { Args: { bet_id: string }; Returns: Json }
       verify_xp_consistency: { Args: { user_id?: string }; Returns: Json }
       virtual_tick: { Args: never; Returns: Json }
       virtual_wallet_admin_adjust: {
