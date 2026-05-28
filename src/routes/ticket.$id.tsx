@@ -373,6 +373,65 @@ function CashoutButton({ betId, amount }: { betId: string; amount: number }) {
   );
 }
 
+function ClaimVirtualButton({ betId, amount }: { betId: string; amount: number }) {
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("virtual_payout_requests")
+        .select("id,status")
+        .eq("bet_id", betId)
+        .in("status", ["pending", "approved"])
+        .maybeSingle();
+      if (data) setClaimed(true);
+    })();
+  }, [betId]);
+
+  async function go() {
+    const ok = await confirm({
+      title: "Submit virtual payout claim?",
+      description: `Request ${amount.toLocaleString()} tokens. Payout will be credited only after an admin approves and the virtual house has enough balance.`,
+      confirmText: "Submit claim",
+    });
+    if (!ok) return;
+    setBusy(true);
+    const { data, error } = await (supabase as any).rpc("user_claim_virtual_payout", { bet_id: betId });
+    setBusy(false);
+    if (error) { toast.error("Claim failed", { description: error.message }); return; }
+    if (!data?.ok) {
+      const err = data?.error;
+      if (err === "house_underfunded") {
+        toast.error("Virtual house underfunded", { description: "An admin needs to top up the virtual house wallet before this payout can be processed." });
+      } else if (err === "already_claimed") {
+        toast.info("Claim already submitted", { description: "Awaiting admin approval." });
+        setClaimed(true);
+      } else {
+        toast.error("Claim rejected", { description: String(err ?? "Unknown error") });
+      }
+      return;
+    }
+    toast.success("Claim submitted", { description: "An admin will review your virtual payout shortly." });
+    setClaimed(true);
+  }
+
+  if (claimed) {
+    return (
+      <div className="w-full rounded-xl py-3 border border-amber-400/50 bg-amber-400/10 text-amber-200 font-black tracking-widest text-sm flex items-center justify-center gap-2">
+        <ClockIcon className="h-4 w-4" />Awaiting admin approval
+      </div>
+    );
+  }
+  return (
+    <button onClick={go} disabled={busy}
+      className="w-full rounded-xl py-3 btn-luxury font-black tracking-widest text-base flex items-center justify-center gap-2 disabled:opacity-60">
+      <Trophy className="h-5 w-5" />{busy ? "Submitting…" : `Claim virtual payout (${amount.toLocaleString()})`}
+    </button>
+  );
+}
+
 /* ================= SUPPORT TICKET (real-time chat with admin) ================= */
 function SupportTicketView({ ticket, userId, isMod }: { ticket: any; userId: string; isMod: boolean }) {
   const [msgs, setMsgs] = useState<any[]>([]);
