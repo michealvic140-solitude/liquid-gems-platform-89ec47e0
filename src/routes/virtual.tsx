@@ -347,7 +347,6 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
   const lockMs = (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
   const endMs = lockMs + animSec * 1000;
   const [feed, setFeed] = useState<string[]>([]);
-  const [tickScore, setTickScore] = useState<{ h: number; a: number }>({ h: 0, a: 0 });
   const [progress, setProgress] = useState(0);
   const [fighters, setFighters] = useState<Fighter[]>(() => {
     const arr: Fighter[] = [];
@@ -374,7 +373,6 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
           else fa += 1;
         }
       }
-      setTickScore({ h: fh, a: fa });
 
       // Move fighters through the block, exchange fire, and drop casualties as the simulated score climbs.
       setFighters((prev) => {
