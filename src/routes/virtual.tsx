@@ -532,10 +532,8 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
           <div className="text-[10px] uppercase tracking-widest text-destructive font-bold flex items-center gap-1">
             <Sparkles className="h-3 w-3" />Live shootout
           </div>
-          <div className="font-mono font-black text-2xl tabular-nums text-foreground">
-            <span className="text-red-400">{tickScore.h}</span>
-            <span className="text-muted-foreground text-base"> · </span>
-            <span className="text-sky-400">{tickScore.a}</span>
+          <div className="font-mono font-black text-lg tabular-nums text-muted-foreground tracking-widest">
+            FINAL REVEALS AT END
           </div>
         </div>
         <div className="h-1 rounded-full bg-background overflow-hidden mb-2">
