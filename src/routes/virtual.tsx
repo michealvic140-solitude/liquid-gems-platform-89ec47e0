@@ -305,7 +305,7 @@ function SectionTitle({
 let __serverOffsetMs = 0;
 async function syncServerOffset() {
   const t0 = Date.now();
-  const { data, error } = await (supabase as any).rpc("server_now");
+  const { data, error } = await supabase.rpc("server_now");
   const t1 = Date.now();
   if (error || !data) return;
   const serverMs = new Date(data as string).getTime();
@@ -338,13 +338,13 @@ function VirtualRoundCard({
   match,
   animSec,
 }: {
-  match: MatchRow & { lock_time?: string | null };
+  match: VirtualMatch;
   animSec: number;
 }) {
   const { add, setOpen, selections } = useBetSlip();
   const home = match.home_team?.name ?? "Home";
   const away = match.away_team?.name ?? "Away";
-  const lockTime = (match as any).lock_time as string | null;
+  const lockTime = match.lock_time;
   const cd = useCountdown(lockTime);
   const settled = match.status === "ended";
   const playing = match.status === "live";
@@ -363,7 +363,7 @@ function VirtualRoundCard({
             : 4;
   const markets = [...(match.markets ?? [])].sort((a, b) => order(a.name) - order(b.name));
 
-  function pick(mk: any, o: any) {
+  function pick(mk: MarketRow, o: OddRow) {
     if (locked) return;
     if (selections.length > 0 && selections.some((s) => !s.is_virtual)) {
       toast.error("Your slip has regular bets. Clear it before adding virtual selections.");
@@ -378,7 +378,7 @@ function VirtualRoundCard({
       selection_label: o.label,
       odds: Number(o.value),
       is_virtual: true,
-      virtual_round_batch_id: (match as any).virtual_round_batch_id ?? match.id,
+      virtual_round_batch_id: match.virtual_round_batch_id ?? match.id,
     });
     setOpen(true);
   }
