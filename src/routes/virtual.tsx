@@ -23,7 +23,7 @@ export const Route = createFileRoute("/virtual")({
 });
 
 const matchSelect = `
-  id,name,status,start_time,location,is_featured,home_score,away_score,is_virtual,lock_time,virtual_round_batch_id,
+  id,name,status,start_time,location,is_featured,home_score,away_score,is_virtual,lock_time,locked_at,virtual_round_batch_id,
   home_team:teams!home_team_id(id,name,logo_url,gang_type),
   away_team:teams!away_team_id(id,name,logo_url,gang_type),
   markets(id,name,is_open,odds(id,label,value,is_winner,market_id))
@@ -69,12 +69,12 @@ function VirtualPage() {
     <Layout>
       <PageShell tone="default">
         <div className="container py-6 sm:py-10 space-y-8">
-          <header className="text-center relative">
+          <header className="virtual-hero-shell text-center relative p-5 sm:p-8">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/15 border border-primary/40 text-[10px] uppercase tracking-[0.3em] text-primary mb-3">
               <Dice5 className="h-3.5 w-3.5" /> Instant Virtuals · Auto-Play
             </div>
-            <h1 className="text-3xl sm:text-5xl font-black gradient-gold-text">Gang vs Gang</h1>
-            <p className="text-muted-foreground mt-2 text-sm">Stake one or many markets. The bet slip handles multi-leg tickets. Wins require admin approval before claim.</p>
+            <h1 className="text-4xl sm:text-6xl font-black gradient-gold-text">Gang vs Gang</h1>
+            <p className="text-muted-foreground mt-3 text-sm sm:text-base max-w-2xl mx-auto">Stake one or many markets. Watch one featured live feed while every active match score updates to the same final result used on vouchers.</p>
             <div className="mt-4 flex justify-center gap-2 flex-wrap">
               <Badge variant="outline" className={cycle.running ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400" : "bg-muted text-muted-foreground"}>
                 {cycle.running ? <><Zap className="h-3 w-3 mr-1" />Cycle running</> : <><PauseCircle className="h-3 w-3 mr-1" />Cycle paused</>}
@@ -84,7 +84,7 @@ function VirtualPage() {
           </header>
 
           {live.length === 0 && upcoming.length === 0 ? (
-            <Card className="glass p-8 text-center text-muted-foreground">
+            <Card className="virtual-match-card p-8 text-center text-muted-foreground">
               <Dice5 className="h-10 w-10 mx-auto mb-3 opacity-50" />
               <p className="font-semibold">{cycle.running ? "Spinning up the next round…" : "No virtual rounds active right now."}</p>
               <p className="text-xs mt-1">{cycle.running ? "New round appears within seconds." : "Admin will start the cycle shortly."}</p>
@@ -117,7 +117,7 @@ function VirtualPage() {
                   const outcome = m.home_score > m.away_score ? `${m.home_team?.name} WIN`
                     : m.away_score > m.home_score ? `${m.away_team?.name} WIN` : "DRAW";
                   return (
-                    <Card key={m.id} className="glass p-3">
+                    <Card key={m.id} className="virtual-result-card p-3">
                       <div className="text-[10px] uppercase tracking-widest text-muted-foreground truncate">{m.name}</div>
                       <div className="flex items-center justify-between mt-2 gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
