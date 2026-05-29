@@ -445,16 +445,7 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
       const now = serverNow();
       const ratio = Math.min(1, Math.max(0, (now - lockMs) / Math.max(1, endMs - lockMs)));
       setProgress(ratio);
-      const eventCount = 4 + Math.floor(seedRand(match.id, 901) * 6);
-      let fh = 0;
-      let fa = 0;
-      for (let i = 0; i < eventCount; i++) {
-        const eventAt = 0.08 + seedRand(match.id, 920 + i) * 0.86;
-        if (ratio >= eventAt) {
-          if (seedRand(match.id, 960 + i) > 0.48) fh += 1;
-          else fa += 1;
-        }
-      }
+      const { h: fh, a: fa } = progressiveScore(match.id, ratio);
 
       // Move fighters through the block, exchange fire, and drop casualties as the simulated score climbs.
       setFighters((prev) => {
@@ -531,7 +522,7 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
   const showA = settled ? match.away_score : liveA;
 
   return (
-    <div className="mt-3 rounded-lg border border-destructive/40 bg-destructive/5 overflow-hidden">
+    <div className="mt-3 rounded-xl border border-primary/40 bg-background/50 overflow-hidden shadow-gold">
       {/* Top-down combat zone (gang shooting battlefield) */}
       <div className="relative w-full aspect-[16/9] overflow-hidden bg-[#0b0f0a]">
         {/* Urban ground texture */}
@@ -613,7 +604,7 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
       </div>
 
       {/* Scoreboard + ticker */}
-      <div className="p-3">
+      <div className="p-3 bg-gradient-to-r from-background/80 via-secondary/50 to-background/80">
         <div className="flex items-center justify-between mb-2">
           <div className="text-[10px] uppercase tracking-widest text-destructive font-bold flex items-center gap-1">
             <Sparkles className="h-3 w-3" />Live shootout
