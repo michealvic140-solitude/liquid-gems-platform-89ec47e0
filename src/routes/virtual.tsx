@@ -101,15 +101,17 @@ function VirtualPage() {
             .eq("id", 1)
             .maybeSingle(),
         ]);
-      setLive((liveRows ?? []) as unknown as MatchRow[]);
-      setUpcoming((upRows ?? []) as unknown as MatchRow[]);
-      setRecent((recRows ?? []) as unknown as MatchRow[]);
-      if (cfg)
+      setLive((liveRows ?? []) as unknown as VirtualMatch[]);
+      setUpcoming((upRows ?? []) as unknown as VirtualMatch[]);
+      setRecent((recRows ?? []) as unknown as VirtualMatch[]);
+      if (cfg) {
+        const settings = cfg as VirtualSettings;
         setCycle({
-          running: !!(cfg as any).virtual_cycle_running,
-          animSec: Number((cfg as any).virtual_animation_seconds ?? 30),
-          durSec: Number((cfg as any).virtual_round_duration_seconds ?? 120),
+          running: !!settings.virtual_cycle_running,
+          animSec: Number(settings.virtual_animation_seconds ?? 30),
+          durSec: Number(settings.virtual_round_duration_seconds ?? 120),
         });
+      }
     };
     load();
     const t = setInterval(load, 1000);
@@ -281,7 +283,15 @@ function VirtualPage() {
   );
 }
 
-function SectionTitle({ icon: Icon, label, color }: { icon: any; label: string; color: string }) {
+function SectionTitle({
+  icon: Icon,
+  label,
+  color,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  color: string;
+}) {
   return (
     <div className="flex items-center gap-2 mb-3">
       <Icon className={`h-4 w-4 ${color}`} />
