@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Layout } from "@/components/Layout";
 import { PageShell } from "@/components/PageShell";
 import { Card } from "@/components/ui/card";
@@ -20,9 +20,21 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { TeamLogo } from "@/components/TeamLogo";
-import type { MatchRow } from "@/lib/queries";
+import type { MarketRow, MatchRow, OddRow } from "@/lib/queries";
 import { useBetSlip } from "@/contexts/BetSlipContext";
 import { toast } from "sonner";
+
+type VirtualMatch = MatchRow & {
+  lock_time?: string | null;
+  locked_at?: string | null;
+  virtual_round_batch_id?: string | null;
+};
+
+type VirtualSettings = {
+  virtual_cycle_running?: boolean | null;
+  virtual_animation_seconds?: number | null;
+  virtual_round_duration_seconds?: number | null;
+};
 
 export const Route = createFileRoute("/virtual")({
   head: () => ({
