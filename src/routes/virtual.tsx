@@ -334,13 +334,7 @@ function useCountdown(target: string | null | undefined) {
   return { secs, mm, ss, done: secs <= 0 };
 }
 
-function VirtualRoundCard({
-  match,
-  animSec,
-}: {
-  match: VirtualMatch;
-  animSec: number;
-}) {
+function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: number }) {
   const { add, setOpen, selections } = useBetSlip();
   const home = match.home_team?.name ?? "Home";
   const away = match.away_team?.name ?? "Away";
@@ -553,13 +547,7 @@ function LiveFeedSection({ matches, animSec }: { matches: VirtualMatch[]; animSe
   );
 }
 
-function LiveScoreRow({
-  match,
-  animSec,
-}: {
-  match: VirtualMatch;
-  animSec: number;
-}) {
+function LiveScoreRow({ match, animSec }: { match: VirtualMatch; animSec: number }) {
   const { h, a, ratio } = useLiveScore(match, animSec);
   const settled = match.status === "ended";
   const home = match.home_team?.name ?? "Home";
@@ -708,13 +696,7 @@ type Fighter = {
 type Tracer = { x1: number; y1: number; x2: number; y2: number; side: "h" | "a"; born: number };
 type Blast = { x: number; y: number; born: number; size: number };
 
-function LiveMatchTicker({
-  match,
-  animSec,
-}: {
-  match: VirtualMatch;
-  animSec: number;
-}) {
+function LiveMatchTicker({ match, animSec }: { match: VirtualMatch; animSec: number }) {
   const lockMs = match.locked_at
     ? new Date(match.locked_at).getTime()
     : match.lock_time
