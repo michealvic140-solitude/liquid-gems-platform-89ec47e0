@@ -285,6 +285,82 @@ function StatusBadge({ settled, playing, locked }: { settled: boolean; playing: 
   return <div className={`absolute top-0 right-0 px-2 py-0.5 text-[10px] font-bold tracking-widest rounded-bl-md border ${tone}`}>{label}</div>;
 }
 
+// Deterministic progressive score for a live virtual match. Starts 0-0 and ramps up smoothly
+// over `animSec`, ending at the simulated total. The DB writes the authoritative final when
+// the round resolves — at that point the card flips to status `ended` and shows the DB value.
+function useLiveScore(match: MatchRow & { lock_time?: string | null }, animSec: number) {
+  const lockMs = (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
+  const endMs = lockMs + animSec * 1000;
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 500); return () => clearInterval(t); }, []);
+  const now = serverNow();
+  const ratio = Math.min(1, Math.max(0, (now - lockMs) / Math.max(1, endMs - lockMs)));
+  // Deterministic number of goals scheduled across the round (3-7) and per-team distribution.
+  const eventCount = 3 + Math.floor(seedRand(match.id, 901) * 5);
+  let h = 0, a = 0;
+  for (let i = 0; i < eventCount; i++) {
+    const eventAt = 0.08 + seedRand(match.id, 920 + i) * 0.86;
+    if (ratio >= eventAt) {
+      if (seedRand(match.id, 960 + i) > 0.48) h += 1; else a += 1;
+    }
+  }
+  void tick;
+  return { h, a, ratio };
+}
+
+function LiveFeedSection({ matches, animSec }: { matches: MatchRow[]; animSec: number }) {
+  // Feature the most recently started live match; the rest get compact scorecards underneath.
+  const featured = matches[0];
+  const rest = matches.slice(1);
+  return (
+    <div className="space-y-4">
+      <VirtualRoundCard match={featured} animSec={animSec} />
+      {rest.length > 0 && (
+        <Card className="glass p-0 overflow-hidden">
+          <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/30 flex items-center gap-2">
+            <Flame className="h-3.5 w-3.5 text-destructive" />
+            <div className="text-[10px] font-black tracking-widest uppercase text-destructive">Other live matches · {rest.length}</div>
+          </div>
+          <div className="max-h-[420px] overflow-y-auto divide-y divide-border/50">
+            {rest.map((m) => <LiveScoreRow key={m.id} match={m} animSec={animSec} />)}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function LiveScoreRow({ match, animSec }: { match: MatchRow & { lock_time?: string | null }; animSec: number }) {
+  const { h, a, ratio } = useLiveScore(match, animSec);
+  const settled = match.status === "ended";
+  const home = match.home_team?.name ?? "Home";
+  const away = match.away_team?.name ?? "Away";
+  const showH = settled ? match.home_score : h;
+  const showA = settled ? match.away_score : a;
+  return (
+    <div className="px-3 py-2.5 flex items-center gap-3 hover:bg-primary/5 transition-colors">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <TeamLogo name={home} url={match.home_team?.logo_url ?? null} size={26} rounded="full" />
+        <span className="text-xs font-bold truncate">{home}</span>
+      </div>
+      <div className="text-center min-w-[68px]">
+        <div className="font-mono font-black text-base tabular-nums text-primary">{showH} - {showA}</div>
+        {!settled ? (
+          <div className="h-0.5 mt-0.5 rounded-full bg-background overflow-hidden">
+            <div className="h-full bg-destructive transition-all" style={{ width: `${ratio * 100}%` }} />
+          </div>
+        ) : (
+          <div className="text-[8px] font-bold text-emerald-400 tracking-widest">FINAL</div>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-1 min-w-0 flex-row-reverse text-right">
+        <TeamLogo name={away} url={match.away_team?.logo_url ?? null} size={26} rounded="full" />
+        <span className="text-xs font-bold truncate">{away}</span>
+      </div>
+    </div>
+  );
+}
+
 function TeamSide({ name, url, side, reverse }: { name: string; url: string | null; side: string; reverse?: boolean }) {
   return (
     <div className={`flex items-center gap-2 min-w-0 ${reverse ? "flex-row-reverse text-right" : ""}`}>
