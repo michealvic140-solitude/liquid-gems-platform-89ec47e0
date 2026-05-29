@@ -517,6 +517,10 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
   const awayName = match.away_team?.name ?? "Gang B";
   const aliveH = fighters.filter((f) => f.side === "h" && f.alive).length;
   const aliveA = fighters.filter((f) => f.side === "a" && f.alive).length;
+  const { h: liveH, a: liveA } = useLiveScore(match, animSec);
+  const settled = match.status === "ended";
+  const showH = settled ? match.home_score : liveH;
+  const showA = settled ? match.away_score : liveA;
 
   return (
     <div className="mt-3 rounded-lg border border-destructive/40 bg-destructive/5 overflow-hidden">
@@ -606,8 +610,9 @@ function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: s
           <div className="text-[10px] uppercase tracking-widest text-destructive font-bold flex items-center gap-1">
             <Sparkles className="h-3 w-3" />Live shootout
           </div>
-          <div className="font-mono font-black text-lg tabular-nums text-muted-foreground tracking-widest">
-            FINAL REVEALS AT END
+          <div className="font-mono font-black text-2xl tabular-nums text-primary tracking-widest">
+            {showH} - {showA}
+            {settled && <span className="ml-2 text-[9px] font-bold text-emerald-400 tracking-widest align-middle">FINAL</span>}
           </div>
         </div>
         <div className="h-1 rounded-full bg-background overflow-hidden mb-2">
