@@ -289,21 +289,14 @@ function StatusBadge({ settled, playing, locked }: { settled: boolean; playing: 
 // over `animSec`, ending at the simulated total. The DB writes the authoritative final when
 // the round resolves — at that point the card flips to status `ended` and shows the DB value.
 function useLiveScore(match: MatchRow & { lock_time?: string | null }, animSec: number) {
-  const lockMs = (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
+  const lockMs = (match as any).locked_at ? new Date((match as any).locked_at).getTime()
+    : (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
   const endMs = lockMs + animSec * 1000;
   const [tick, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 500); return () => clearInterval(t); }, []);
   const now = serverNow();
   const ratio = Math.min(1, Math.max(0, (now - lockMs) / Math.max(1, endMs - lockMs)));
-  // Deterministic number of goals scheduled across the round (3-7) and per-team distribution.
-  const eventCount = 3 + Math.floor(seedRand(match.id, 901) * 5);
-  let h = 0, a = 0;
-  for (let i = 0; i < eventCount; i++) {
-    const eventAt = 0.08 + seedRand(match.id, 920 + i) * 0.86;
-    if (ratio >= eventAt) {
-      if (seedRand(match.id, 960 + i) > 0.48) h += 1; else a += 1;
-    }
-  }
+  const { h, a } = progressiveScore(match.id, ratio);
   void tick;
   return { h, a, ratio };
 }
@@ -316,8 +309,8 @@ function LiveFeedSection({ matches, animSec }: { matches: MatchRow[]; animSec: n
     <div className="space-y-4">
       <VirtualRoundCard match={featured} animSec={animSec} />
       {rest.length > 0 && (
-        <Card className="glass p-0 overflow-hidden">
-          <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/30 flex items-center gap-2">
+        <Card className="virtual-live-list p-0 overflow-hidden">
+          <div className="px-4 py-3 bg-destructive/10 border-b border-primary/30 flex items-center gap-2">
             <Flame className="h-3.5 w-3.5 text-destructive" />
             <div className="text-[10px] font-black tracking-widest uppercase text-destructive">Other live matches · {rest.length}</div>
           </div>
