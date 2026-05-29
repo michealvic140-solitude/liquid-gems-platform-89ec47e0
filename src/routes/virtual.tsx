@@ -508,11 +508,11 @@ function StatusBadge({
 // Deterministic progressive score for a live virtual match. Starts 0-0 and ramps up smoothly
 // over `animSec`, ending at the simulated total. The DB writes the authoritative final when
 // the round resolves — at that point the card flips to status `ended` and shows the DB value.
-function useLiveScore(match: MatchRow & { lock_time?: string | null }, animSec: number) {
-  const lockMs = (match as any).locked_at
-    ? new Date((match as any).locked_at).getTime()
-    : (match as any).lock_time
-      ? new Date((match as any).lock_time).getTime()
+function useLiveScore(match: VirtualMatch, animSec: number) {
+  const lockMs = match.locked_at
+    ? new Date(match.locked_at).getTime()
+    : match.lock_time
+      ? new Date(match.lock_time).getTime()
       : Date.now();
   const endMs = lockMs + animSec * 1000;
   const [tick, setTick] = useState(0);
@@ -527,7 +527,7 @@ function useLiveScore(match: MatchRow & { lock_time?: string | null }, animSec: 
   return { h, a, ratio };
 }
 
-function LiveFeedSection({ matches, animSec }: { matches: MatchRow[]; animSec: number }) {
+function LiveFeedSection({ matches, animSec }: { matches: VirtualMatch[]; animSec: number }) {
   // Feature the most recently started live match; the rest get compact scorecards underneath.
   const featured = matches[0];
   const rest = matches.slice(1);
@@ -557,7 +557,7 @@ function LiveScoreRow({
   match,
   animSec,
 }: {
-  match: MatchRow & { lock_time?: string | null };
+  match: VirtualMatch;
   animSec: number;
 }) {
   const { h, a, ratio } = useLiveScore(match, animSec);
