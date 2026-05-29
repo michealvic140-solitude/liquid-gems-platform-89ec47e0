@@ -2052,6 +2052,18 @@ export type Database = {
       user_cashout_bet: { Args: { bet_id: string }; Returns: Json }
       user_claim_virtual_payout: { Args: { bet_id: string }; Returns: Json }
       verify_xp_consistency: { Args: { user_id?: string }; Returns: Json }
+      virtual_score_for_match: {
+        Args: { _match_id: string }
+        Returns: {
+          away_score: number
+          first_blood_team_id: string
+          home_score: number
+        }[]
+      }
+      virtual_seed_rand: {
+        Args: { _i: number; _seed: string }
+        Returns: number
+      }
       virtual_tick: { Args: never; Returns: Json }
       virtual_wallet_admin_adjust: {
         Args: { delta: number; reason: string }
