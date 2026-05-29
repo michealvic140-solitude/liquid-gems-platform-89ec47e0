@@ -400,10 +400,24 @@ const KILL_LINES = [
 
 // Deterministic pseudo-random based on match id + index — keeps positions stable per round.
 function seedRand(seed: string, i: number) {
-  let h = 2166136261 >>> 0;
   const s = `${seed}:${i}`;
-  for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619); }
-  return ((h >>> 0) % 10000) / 10000;
+  let h = 0;
+  for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) % 1000003;
+  return (h % 10000) / 10000;
+}
+
+function progressiveScore(matchId: string, ratio: number) {
+  const eventCount = 3 + Math.floor(seedRand(matchId, 901) * 5);
+  let h = 0;
+  let a = 0;
+  for (let i = 0; i < eventCount; i++) {
+    const eventAt = 0.08 + seedRand(matchId, 920 + i) * 0.86;
+    if (ratio >= eventAt) {
+      if (seedRand(matchId, 960 + i) > 0.48) h += 1;
+      else a += 1;
+    }
+  }
+  return { h, a };
 }
 
 type Fighter = { x: number; y: number; side: "h" | "a"; alive: boolean; flash: number; vx: number; vy: number };
@@ -411,7 +425,8 @@ type Tracer = { x1: number; y1: number; x2: number; y2: number; side: "h" | "a";
 type Blast = { x: number; y: number; born: number; size: number };
 
 function LiveMatchTicker({ match, animSec }: { match: MatchRow & { lock_time?: string | null }; animSec: number }) {
-  const lockMs = (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
+  const lockMs = (match as any).locked_at ? new Date((match as any).locked_at).getTime()
+    : (match as any).lock_time ? new Date((match as any).lock_time).getTime() : Date.now();
   const endMs = lockMs + animSec * 1000;
   const [feed, setFeed] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
