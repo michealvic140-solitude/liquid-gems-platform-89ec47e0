@@ -211,7 +211,7 @@ function VirtualRoundCard({ match, animSec }: { match: MatchRow & { lock_time?: 
   }
 
   return (
-    <Card className="glass p-4 relative overflow-hidden border-primary/30">
+    <Card className="virtual-match-card p-4 relative overflow-hidden">
       <StatusBadge settled={settled} playing={playing} locked={locked} />
       <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Instant Virtual</div>
 
@@ -242,7 +242,7 @@ function VirtualRoundCard({ match, animSec }: { match: MatchRow & { lock_time?: 
             const isCS = /correct\s*score/i.test(mk.name);
             const odds = isCS ? mk.odds.slice(0, 6) : mk.odds;
             return (
-              <div key={mk.id} className="rounded-lg border border-border/50 bg-background/30 p-2">
+              <div key={mk.id} className="rounded-lg border border-primary/25 bg-background/40 p-2.5 shadow-inner">
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">{mk.name}</div>
                 <div className={`grid gap-1.5 ${odds.length <= 3 ? "grid-cols-3" : "grid-cols-3 sm:grid-cols-6"}`}>
                   {odds.map((o) => {
@@ -254,8 +254,8 @@ function VirtualRoundCard({ match, animSec }: { match: MatchRow & { lock_time?: 
                         onClick={() => pick(mk, o)}
                         className={`px-1.5 py-1.5 rounded-md text-[11px] font-bold transition-all border ${
                           locked ? "bg-secondary/30 text-muted-foreground cursor-not-allowed border-transparent"
-                          : picked ? "bg-primary/20 border-primary text-primary"
-                          : "bg-secondary/40 border-border hover:border-primary/60 hover:bg-primary/10"
+                           : picked ? "bg-primary/25 border-primary text-primary shadow-gold"
+                           : "bg-secondary/50 border-primary/20 hover:border-primary/70 hover:bg-primary/15"
                         }`}
                       >
                         <div className="text-[9px] uppercase tracking-wider opacity-80 truncate">{o.label}</div>
