@@ -103,9 +103,7 @@ function VirtualPage() {
               {live.length > 0 && (
                 <section>
                   <SectionTitle icon={Flame} label="Playing out · watch live" color="text-destructive" />
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {live.map((m) => <VirtualRoundCard key={m.id} match={m} animSec={cycle.animSec} />)}
-                  </div>
+                  <LiveFeedSection matches={live} animSec={cycle.animSec} />
                 </section>
               )}
             </>
