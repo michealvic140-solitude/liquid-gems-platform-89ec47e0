@@ -712,13 +712,13 @@ function LiveMatchTicker({
   match,
   animSec,
 }: {
-  match: MatchRow & { lock_time?: string | null };
+  match: VirtualMatch;
   animSec: number;
 }) {
-  const lockMs = (match as any).locked_at
-    ? new Date((match as any).locked_at).getTime()
-    : (match as any).lock_time
-      ? new Date((match as any).lock_time).getTime()
+  const lockMs = match.locked_at
+    ? new Date(match.locked_at).getTime()
+    : match.lock_time
+      ? new Date(match.lock_time).getTime()
       : Date.now();
   const endMs = lockMs + animSec * 1000;
   const [feed, setFeed] = useState<string[]>([]);
