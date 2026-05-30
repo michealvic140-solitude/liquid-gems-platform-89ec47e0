@@ -673,14 +673,23 @@ function seedRand(seed: string, i: number) {
 }
 
 function progressiveScore(matchId: string, ratio: number) {
-  const eventCount = 3 + Math.floor(seedRand(matchId, 901) * 5);
+  const eventCount = 4 + Math.floor(seedRand(matchId, 901) * 5);
+  const homeTarget = Math.min(
+    eventCount - 1,
+    Math.max(1, 1 + Math.floor(seedRand(matchId, 902) * Math.max(1, eventCount - 1))),
+  );
+  const awayTarget = Math.max(1, eventCount - homeTarget);
+  let homeLeft = homeTarget;
+  let awayLeft = awayTarget;
   let h = 0;
   let a = 0;
   for (let i = 0; i < eventCount; i++) {
     const eventAt = 0.08 + seedRand(matchId, 920 + i) * 0.86;
     if (ratio >= eventAt) {
-      if (seedRand(matchId, 960 + i) > 0.48) h += 1;
-      else a += 1;
+      const homeChance = homeLeft / Math.max(1, homeLeft + awayLeft);
+      const side = homeLeft <= 0 ? "away" : awayLeft <= 0 ? "home" : seedRand(matchId, 960 + i) < homeChance ? "home" : "away";
+      if (side === "home") { h += 1; homeLeft -= 1; }
+      else { a += 1; awayLeft -= 1; }
     }
   }
   return { h, a };
