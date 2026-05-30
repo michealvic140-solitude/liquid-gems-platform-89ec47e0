@@ -145,17 +145,18 @@ function VirtualPage() {
   return (
     <Layout>
       <PageShell tone="default">
-        <div className="container py-6 sm:py-10 space-y-8">
-          <header className="virtual-hero-shell text-center relative p-5 sm:p-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/15 border border-primary/40 text-[10px] uppercase tracking-[0.3em] text-primary mb-3">
+        <div className="container py-6 sm:py-10 space-y-8 virtual-page-stage">
+          <header className="virtual-hero-shell text-center relative p-6 sm:p-9">
+            <div className="virtual-orbit-ring" aria-hidden />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/15 border border-primary/40 text-[10px] uppercase tracking-[0.3em] text-primary mb-3 relative z-10">
               <Dice5 className="h-3.5 w-3.5" /> Instant Virtuals · Auto-Play
             </div>
-            <h1 className="text-4xl sm:text-6xl font-black gradient-gold-text">Gang vs Gang</h1>
-            <p className="text-muted-foreground mt-3 text-sm sm:text-base max-w-2xl mx-auto">
+            <h1 className="text-4xl sm:text-6xl font-black gradient-gold-text relative z-10">Gang vs Gang</h1>
+            <p className="text-muted-foreground mt-3 text-sm sm:text-base max-w-2xl mx-auto relative z-10">
               Stake one or many markets. Watch one featured live feed while every active match score
               updates to the same final result used on vouchers.
             </p>
-            <div className="mt-4 flex justify-center gap-2 flex-wrap">
+            <div className="mt-4 flex justify-center gap-2 flex-wrap relative z-10">
               <Badge
                 variant="outline"
                 className={
