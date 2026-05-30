@@ -116,16 +116,16 @@ function VirtualPage() {
     load();
     const t = setInterval(load, 1000);
     // Fallback ping while signed in, in case the scheduled backend tick lags.
-    const ping = setInterval(() => {
+    const pingTick = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) return;
       supabase.rpc("virtual_tick").then(
         () => {},
         () => {},
       );
-    }, 8000);
-    supabase.rpc("virtual_tick").then(
-      () => {},
-      () => {},
-    );
+    };
+    const ping = setInterval(pingTick, 8000);
+    pingTick();
     const ch = supabase
       .channel("virtual-rounds-v2")
       .on(
@@ -145,17 +145,18 @@ function VirtualPage() {
   return (
     <Layout>
       <PageShell tone="default">
-        <div className="container py-6 sm:py-10 space-y-8">
-          <header className="virtual-hero-shell text-center relative p-5 sm:p-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/15 border border-primary/40 text-[10px] uppercase tracking-[0.3em] text-primary mb-3">
+        <div className="container py-6 sm:py-10 space-y-8 virtual-page-stage">
+          <header className="virtual-hero-shell text-center relative p-6 sm:p-9">
+            <div className="virtual-orbit-ring" aria-hidden />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/15 border border-primary/40 text-[10px] uppercase tracking-[0.3em] text-primary mb-3 relative z-10">
               <Dice5 className="h-3.5 w-3.5" /> Instant Virtuals · Auto-Play
             </div>
-            <h1 className="text-4xl sm:text-6xl font-black gradient-gold-text">Gang vs Gang</h1>
-            <p className="text-muted-foreground mt-3 text-sm sm:text-base max-w-2xl mx-auto">
+            <h1 className="text-4xl sm:text-6xl font-black gradient-gold-text relative z-10">Gang vs Gang</h1>
+            <p className="text-muted-foreground mt-3 text-sm sm:text-base max-w-2xl mx-auto relative z-10">
               Stake one or many markets. Watch one featured live feed while every active match score
               updates to the same final result used on vouchers.
             </p>
-            <div className="mt-4 flex justify-center gap-2 flex-wrap">
+            <div className="mt-4 flex justify-center gap-2 flex-wrap relative z-10">
               <Badge
                 variant="outline"
                 className={
@@ -378,19 +379,20 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
   }
 
   return (
-    <Card className="virtual-match-card p-4 relative overflow-hidden">
+    <Card className="virtual-match-card virtual-3d-card p-4 sm:p-5 relative overflow-hidden">
       <StatusBadge settled={settled} playing={playing} locked={locked} />
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold opacity-90" />
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground relative z-10">
         Instant Virtual
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mt-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mt-3 relative z-10">
         <TeamSide name={home} url={match.home_team?.logo_url ?? null} side="Gang A" />
         <CenterDial match={match} playing={playing} settled={settled} animSec={animSec} />
         <TeamSide name={away} url={match.away_team?.logo_url ?? null} side="Gang B" reverse />
       </div>
 
-      <div className="mt-3 text-center text-xs">
+      <div className="mt-3 text-center text-xs relative z-10">
         {settled ? (
           <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
             <CheckCircle2 className="h-3 w-3" />
@@ -419,14 +421,14 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
       </div>
 
       {!settled && !playing && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-2 relative z-10">
           {markets.map((mk) => {
             const isCS = /correct\s*score/i.test(mk.name);
             const odds = isCS ? mk.odds.slice(0, 6) : mk.odds;
             return (
               <div
                 key={mk.id}
-                className="rounded-lg border border-primary/25 bg-background/40 p-2.5 shadow-inner"
+                className="rounded-xl border-2 border-primary/25 bg-background/50 p-2.5 shadow-inner shadow-black/40"
               >
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
                   {mk.name}
@@ -445,8 +447,8 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
                           locked
                             ? "bg-secondary/30 text-muted-foreground cursor-not-allowed border-transparent"
                             : picked
-                              ? "bg-primary/25 border-primary text-primary shadow-gold"
-                              : "bg-secondary/50 border-primary/20 hover:border-primary/70 hover:bg-primary/15"
+                              ? "bg-primary/25 border-primary text-primary shadow-gold scale-[1.03]"
+                              : "bg-secondary/70 border-primary/25 hover:border-primary/70 hover:bg-primary/20 hover:-translate-y-0.5"
                         }`}
                       >
                         <div className="text-[9px] uppercase tracking-wider opacity-80 truncate">
@@ -671,14 +673,26 @@ function seedRand(seed: string, i: number) {
 }
 
 function progressiveScore(matchId: string, ratio: number) {
-  const eventCount = 3 + Math.floor(seedRand(matchId, 901) * 5);
+  const eventCount = 4 + Math.floor(seedRand(matchId, 901) * 5);
+  const homeTarget = Math.min(
+    eventCount - 1,
+    Math.max(1, 1 + Math.floor(seedRand(matchId, 902) * Math.max(1, eventCount - 1))),
+  );
+  const awayTarget = Math.max(1, eventCount - homeTarget);
+  let homeLeft = homeTarget;
+  let awayLeft = awayTarget;
   let h = 0;
   let a = 0;
   for (let i = 0; i < eventCount; i++) {
     const eventAt = 0.08 + seedRand(matchId, 920 + i) * 0.86;
-    if (ratio >= eventAt) {
-      if (seedRand(matchId, 960 + i) > 0.48) h += 1;
-      else a += 1;
+    const homeChance = homeLeft / Math.max(1, homeLeft + awayLeft);
+    const side = homeLeft <= 0 ? "away" : awayLeft <= 0 ? "home" : seedRand(matchId, 960 + i) < homeChance ? "home" : "away";
+    if (side === "home") {
+      homeLeft -= 1;
+      if (ratio >= eventAt) h += 1;
+    } else {
+      awayLeft -= 1;
+      if (ratio >= eventAt) a += 1;
     }
   }
   return { h, a };
