@@ -116,16 +116,16 @@ function VirtualPage() {
     load();
     const t = setInterval(load, 1000);
     // Fallback ping while signed in, in case the scheduled backend tick lags.
-    const ping = setInterval(() => {
+    const pingTick = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) return;
       supabase.rpc("virtual_tick").then(
         () => {},
         () => {},
       );
-    }, 8000);
-    supabase.rpc("virtual_tick").then(
-      () => {},
-      () => {},
-    );
+    };
+    const ping = setInterval(pingTick, 8000);
+    pingTick();
     const ch = supabase
       .channel("virtual-rounds-v2")
       .on(
@@ -685,11 +685,14 @@ function progressiveScore(matchId: string, ratio: number) {
   let a = 0;
   for (let i = 0; i < eventCount; i++) {
     const eventAt = 0.08 + seedRand(matchId, 920 + i) * 0.86;
-    if (ratio >= eventAt) {
-      const homeChance = homeLeft / Math.max(1, homeLeft + awayLeft);
-      const side = homeLeft <= 0 ? "away" : awayLeft <= 0 ? "home" : seedRand(matchId, 960 + i) < homeChance ? "home" : "away";
-      if (side === "home") { h += 1; homeLeft -= 1; }
-      else { a += 1; awayLeft -= 1; }
+    const homeChance = homeLeft / Math.max(1, homeLeft + awayLeft);
+    const side = homeLeft <= 0 ? "away" : awayLeft <= 0 ? "home" : seedRand(matchId, 960 + i) < homeChance ? "home" : "away";
+    if (side === "home") {
+      homeLeft -= 1;
+      if (ratio >= eventAt) h += 1;
+    } else {
+      awayLeft -= 1;
+      if (ratio >= eventAt) a += 1;
     }
   }
   return { h, a };
