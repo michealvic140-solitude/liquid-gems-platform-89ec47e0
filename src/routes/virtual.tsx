@@ -379,19 +379,20 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
   }
 
   return (
-    <Card className="virtual-match-card p-4 relative overflow-hidden">
+    <Card className="virtual-match-card virtual-3d-card p-4 sm:p-5 relative overflow-hidden">
       <StatusBadge settled={settled} playing={playing} locked={locked} />
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold opacity-90" />
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground relative z-10">
         Instant Virtual
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mt-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mt-3 relative z-10">
         <TeamSide name={home} url={match.home_team?.logo_url ?? null} side="Gang A" />
         <CenterDial match={match} playing={playing} settled={settled} animSec={animSec} />
         <TeamSide name={away} url={match.away_team?.logo_url ?? null} side="Gang B" reverse />
       </div>
 
-      <div className="mt-3 text-center text-xs">
+      <div className="mt-3 text-center text-xs relative z-10">
         {settled ? (
           <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
             <CheckCircle2 className="h-3 w-3" />
@@ -420,14 +421,14 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
       </div>
 
       {!settled && !playing && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-2 relative z-10">
           {markets.map((mk) => {
             const isCS = /correct\s*score/i.test(mk.name);
             const odds = isCS ? mk.odds.slice(0, 6) : mk.odds;
             return (
               <div
                 key={mk.id}
-                className="rounded-lg border border-primary/25 bg-background/40 p-2.5 shadow-inner"
+                className="rounded-xl border-2 border-primary/25 bg-background/50 p-2.5 shadow-inner shadow-black/40"
               >
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
                   {mk.name}
@@ -446,8 +447,8 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
                           locked
                             ? "bg-secondary/30 text-muted-foreground cursor-not-allowed border-transparent"
                             : picked
-                              ? "bg-primary/25 border-primary text-primary shadow-gold"
-                              : "bg-secondary/50 border-primary/20 hover:border-primary/70 hover:bg-primary/15"
+                              ? "bg-primary/25 border-primary text-primary shadow-gold scale-[1.03]"
+                              : "bg-secondary/70 border-primary/25 hover:border-primary/70 hover:bg-primary/20 hover:-translate-y-0.5"
                         }`}
                       >
                         <div className="text-[9px] uppercase tracking-wider opacity-80 truncate">
