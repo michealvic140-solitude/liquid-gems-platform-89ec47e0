@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Shield, Users, Trophy, Coins, Megaphone, Settings as SettingsIcon, Ticket, AlertTriangle,
   Calendar, Tag, Image as ImageIcon, BarChart3, History, Send, Plus, Trash2, Pencil, ChevronRight, ChevronLeft, Wallet, ListOrdered, Sparkles, ClipboardList, Lock, Pause, Play, Check, X, MessageSquare, Eye, RotateCw, Copy, Globe, MapPin, Smartphone, Clock, Filter,
-  Dice5,
+  Dice5, Menu, Activity as ActivityIcon, FileText, Zap, UserPlus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import lslLogo from "@/assets/lsl-logo.png";
@@ -34,11 +34,49 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+const ADMIN_NAV: { tab: string; label: string; icon: any; mod?: boolean; alertKey?: string }[] = [
+  { tab: "analytics", label: "Analytics", icon: BarChart3, mod: true },
+  { tab: "activity", label: "Activity", icon: ActivityIcon },
+  { tab: "adminai", label: "Admin AI", icon: Sparkles },
+  { tab: "appeals", label: "Appeals", icon: AlertTriangle, mod: true, alertKey: "appeals" },
+  { tab: "audit", label: "Audit", icon: History },
+  { tab: "bettracker", label: "Bet Tracker", icon: ClipboardList, alertKey: "bettracker" },
+  { tab: "broadcast", label: "Broadcast", icon: Send },
+  { tab: "challenges", label: "Challenges", icon: Sparkles },
+  { tab: "chat", label: "Chat", icon: MessageSquare, mod: true, alertKey: "chat" },
+  { tab: "content", label: "Content", icon: Megaphone, mod: true },
+  { tab: "emblems", label: "Emblems", icon: Trophy },
+  { tab: "events", label: "Events", icon: Calendar },
+  { tab: "housewallet", label: "House Wallet", icon: Wallet },
+  { tab: "leaderboard", label: "Leaderboard", icon: ListOrdered },
+  { tab: "matches", label: "Matches", icon: Trophy, mod: true },
+  { tab: "notify", label: "Notify", icon: Send, mod: true },
+  { tab: "pnl", label: "P&L", icon: BarChart3 },
+  { tab: "promos", label: "Promo Codes", icon: Tag },
+  { tab: "promoreqs", label: "Promo Requests", icon: Tag, alertKey: "promoreqs" },
+  { tab: "referrals", label: "Referrals", icon: Users },
+  { tab: "reports", label: "Reports", icon: FileText },
+  { tab: "risk", label: "Risk", icon: AlertTriangle },
+  { tab: "seasons", label: "Seasons", icon: Trophy },
+  { tab: "settings", label: "Settings", icon: SettingsIcon },
+  { tab: "spotlights", label: "Spotlights", icon: Sparkles, mod: true },
+  { tab: "streakpush", label: "Streak & Push", icon: Sparkles },
+  { tab: "tasks", label: "Tasks & Achievements", icon: ClipboardList },
+  { tab: "tickets", label: "Tickets", icon: Ticket, mod: true, alertKey: "tickets" },
+  { tab: "tokens", label: "Tokens", icon: Coins, mod: true, alertKey: "tokens" },
+  { tab: "tokenrules", label: "Token Rules", icon: Coins },
+  { tab: "users", label: "Users", icon: Users, mod: true, alertKey: "users" },
+  { tab: "virtual", label: "Virtual", icon: Dice5 },
+  { tab: "vip", label: "VIP", icon: Trophy },
+  { tab: "withdrawals", label: "Withdrawals", icon: Wallet, mod: true, alertKey: "withdrawals" },
+];
+
 function AdminPage() {
   const { isAdmin, isMod, loading } = useAuth();
   const nav = useNavigate();
   const [alerts, setAlerts] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState(isAdmin ? "analytics" : "tickets");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   useEffect(() => { if (!loading && !isAdmin && !isMod) nav({ to: "/" }); }, [isAdmin, isMod, loading, nav]);
   useEffect(() => {
     if (!isAdmin) return;
@@ -73,114 +111,404 @@ function AdminPage() {
   if (loading) return <Layout><div className="container py-10">Loading…</div></Layout>;
   if (!isAdmin && !isMod) return null;
 
+  const navItems = ADMIN_NAV.filter((n) => isAdmin || n.mod);
+  const activeMeta = navItems.find((n) => n.tab === activeTab) ?? navItems[0];
+
+  const panels: Record<string, React.ReactNode> = {
+    analytics: <DashboardOverviewPanel alerts={alerts} onOpen={setActiveTab} />,
+    activity: <ActivityPanel />,
+    adminai: <AdminAILivePanel />,
+    appeals: <AppealsPanel />,
+    audit: <AuditPanel />,
+    bettracker: <BetTrackerPanel />,
+    broadcast: <BroadcastPanel />,
+    challenges: <ChallengesAdminPanel />,
+    chat: <ChatMonitorPanel />,
+    content: <ContentPanel />,
+    emblems: <EmblemModerationPanel />,
+    events: <EventsPanel />,
+    housewallet: <HouseWalletPanel />,
+    leaderboard: <LeaderboardAdminPanel />,
+    matches: <MatchesPanel />,
+    notify: <NotifyPanel />,
+    pnl: <PnLPanel />,
+    promos: <PromoPanel />,
+    promoreqs: <PromoRequestsPanel />,
+    referrals: <ReferralsAdminPanel />,
+    reports: <ReportsPanel />,
+    risk: <RiskPanel />,
+    seasons: <SeasonsAdminPanel />,
+    settings: <SettingsPanel />,
+    spotlights: <SpotlightsAdminPanel />,
+    streakpush: <StreakAndPushPanel />,
+    tasks: <TasksAchievementsPanel />,
+    tickets: <TicketsPanel />,
+    tokens: <TokensPanel />,
+    tokenrules: <TokenRulesPanel />,
+    users: <UsersPanel />,
+    virtual: <VirtualAdminPanel />,
+    vip: <VipAdminPanel />,
+    withdrawals: <WithdrawalsPanel />,
+  };
+
   return (
     <Layout>
-      <div className="container py-8 space-y-6">
-        <div className="relative overflow-hidden rounded-2xl p-5 border border-primary/30 shadow-luxury bg-gradient-to-br from-card/90 via-card/70 to-primary/10 backdrop-blur-xl">
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold" />
-          <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
-          <div className="relative flex items-center gap-3 flex-wrap">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40">
-              <img src={lslLogo} alt="LSL" className="h-10 w-10 object-contain" />
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
-              <h1 className="text-3xl font-bold gradient-gold-text">Admin Console</h1>
-            </div>
-            <Badge variant="outline" className={`ml-auto ${isAdmin ? "border-accent/50 text-accent" : "border-primary/50 text-primary"}`}>
-              {isAdmin ? "Admin" : "Moderator"}
-            </Badge>
-          </div>
-        </div>
-
-        {isAdmin && <Stats />}
-        <AdminSectionRail alerts={alerts} onOpen={setActiveTab} />
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList
-            className="flex w-full max-w-full overflow-x-auto h-auto justify-start gap-1 p-2 rounded-2xl md:flex-wrap backdrop-blur-xl shadow-luxury"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.32 0.08 70 / 0.85) 0%, oklch(0.22 0.06 60 / 0.78) 45%, oklch(0.18 0.05 55 / 0.85) 100%)",
-              border: "1px solid oklch(0.78 0.14 78 / 0.45)",
-              boxShadow:
-                "inset 0 1px 0 oklch(0.95 0.08 92 / 0.15), inset 0 -1px 0 oklch(0 0 0 / 0.4), 0 12px 40px -12px oklch(0.45 0.14 70 / 0.55), 0 0 0 1px oklch(0.62 0.14 80 / 0.25)",
-            }}
+      <div className="container py-4 lg:py-6">
+        <div className="flex gap-4 items-start">
+          {/* Sidebar */}
+          <aside
+            className={`shrink-0 transition-all duration-300 ${
+              sidebarOpen ? "w-[230px]" : "w-[64px]"
+            } sticky top-4 self-start hidden md:block`}
           >
-            {(isAdmin || isMod) && <TabsTrigger value="analytics"><BarChart3 className="h-3 w-3 mr-1" />Analytics</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="activity"><Users className="h-3 w-3 mr-1" />Activity</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="adminai"><Sparkles className="h-3 w-3 mr-1" />Admin AI</TabsTrigger>}
-            <TabsTrigger value="appeals"><AdminTab icon={AlertTriangle} label="Appeals" count={alerts.appeals} /></TabsTrigger>
-            {isAdmin && <TabsTrigger value="audit"><History className="h-3 w-3 mr-1" />Audit</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="bettracker"><AdminTab icon={ClipboardList} label="Bet Tracker" count={alerts.bettracker} /></TabsTrigger>}
-            {isAdmin && <TabsTrigger value="broadcast"><Send className="h-3 w-3 mr-1" />Broadcast</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="challenges"><Sparkles className="h-3 w-3 mr-1" />Challenges</TabsTrigger>}
-            <TabsTrigger value="chat"><AdminTab icon={MessageSquare} label="Chat" count={alerts.chat} /></TabsTrigger>
-            {(isAdmin || isMod) && <TabsTrigger value="content"><Megaphone className="h-3 w-3 mr-1" />Content</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="emblems"><Trophy className="h-3 w-3 mr-1" />Emblems</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="events"><Calendar className="h-3 w-3 mr-1" />Events</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="housewallet"><Wallet className="h-3 w-3 mr-1" />House Wallet</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="leaderboard"><ListOrdered className="h-3 w-3 mr-1" />Leaderboard</TabsTrigger>}
-            {(isAdmin || isMod) && <TabsTrigger value="matches"><Trophy className="h-3 w-3 mr-1" />Matches</TabsTrigger>}
-            {(isAdmin || isMod) && <TabsTrigger value="notify"><Send className="h-3 w-3 mr-1" />Notify</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="pnl"><BarChart3 className="h-3 w-3 mr-1" />P&L</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="promos"><Tag className="h-3 w-3 mr-1" />Promo Codes</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="promoreqs"><AdminTab icon={Tag} label="Promo Requests" count={alerts.promoreqs} /></TabsTrigger>}
-            {isAdmin && <TabsTrigger value="referrals"><Users className="h-3 w-3 mr-1" />Referrals</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="reports"><BarChart3 className="h-3 w-3 mr-1" />Reports</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="risk"><AlertTriangle className="h-3 w-3 mr-1" />Risk</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="seasons"><Trophy className="h-3 w-3 mr-1" />Seasons</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="settings"><SettingsIcon className="h-3 w-3 mr-1" />Settings</TabsTrigger>}
-            {(isAdmin || isMod) && <TabsTrigger value="spotlights"><Sparkles className="h-3 w-3 mr-1" />Spotlights</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="streakpush"><Sparkles className="h-3 w-3 mr-1" />Streak & Push</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="tasks"><ClipboardList className="h-3 w-3 mr-1" />Tasks & Achievements</TabsTrigger>}
-            <TabsTrigger value="tickets"><AdminTab icon={Ticket} label="Tickets" count={alerts.tickets} /></TabsTrigger>
-            {(isAdmin || isMod) && <TabsTrigger value="tokens"><AdminTab icon={Coins} label="Tokens" count={alerts.tokens} /></TabsTrigger>}
-            {isAdmin && <TabsTrigger value="tokenrules"><Coins className="h-3 w-3 mr-1" />Token Rules</TabsTrigger>}
-            <TabsTrigger value="users"><AdminTab icon={Users} label="Users" count={alerts.users} /></TabsTrigger>
-            {isAdmin && <TabsTrigger value="virtual"><Dice5 className="h-3 w-3 mr-1" />Virtual</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="vip"><Trophy className="h-3 w-3 mr-1" />VIP</TabsTrigger>}
-            {(isAdmin || isMod) && <TabsTrigger value="withdrawals"><AdminTab icon={Wallet} label="Withdrawals" count={alerts.withdrawals} /></TabsTrigger>}
-          </TabsList>
-          <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
-            <TabsContent value="virtual" className="mt-4"><VirtualAdminPanel /></TabsContent>
-          <TabsContent value="matches" className="mt-4"><MatchesPanel /></TabsContent>
-          <TabsContent value="events" className="mt-4"><EventsPanel /></TabsContent>
-          <TabsContent value="tokens" className="mt-4"><TokensPanel /></TabsContent>
-          <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
-          <TabsContent value="housewallet" className="mt-4"><HouseWalletPanel /></TabsContent>
-          <TabsContent value="leaderboard" className="mt-4"><LeaderboardAdminPanel /></TabsContent>
-          <TabsContent value="promos" className="mt-4"><PromoPanel /></TabsContent>
-          <TabsContent value="content" className="mt-4"><ContentPanel /></TabsContent>
-          <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
-          <TabsContent value="tasks" className="mt-4"><TasksAchievementsPanel /></TabsContent>
-          <TabsContent value="challenges" className="mt-4"><ChallengesAdminPanel /></TabsContent>
-          <TabsContent value="seasons" className="mt-4"><SeasonsAdminPanel /></TabsContent>
-          <TabsContent value="bettracker" className="mt-4"><BetTrackerPanel /></TabsContent>
-          <TabsContent value="promoreqs" className="mt-4"><PromoRequestsPanel /></TabsContent>
-          <TabsContent value="appeals" className="mt-4"><AppealsPanel /></TabsContent>
-          <TabsContent value="chat" className="mt-4"><ChatMonitorPanel /></TabsContent>
-          <TabsContent value="notify" className="mt-4"><NotifyPanel /></TabsContent>
-          <TabsContent value="audit" className="mt-4"><AuditPanel /></TabsContent>
-          <TabsContent value="analytics" className="mt-4"><AnalyticsPanel /></TabsContent>
-          <TabsContent value="settings" className="mt-4"><SettingsPanel /></TabsContent>
-          <TabsContent value="adminai" className="mt-4"><AdminAILivePanel /></TabsContent>
-          <TabsContent value="risk" className="mt-4"><RiskPanel /></TabsContent>
-          <TabsContent value="pnl" className="mt-4"><PnLPanel /></TabsContent>
-          <TabsContent value="reports" className="mt-4"><ReportsPanel /></TabsContent>
-          <TabsContent value="tokenrules" className="mt-4"><TokenRulesPanel /></TabsContent>
-          <TabsContent value="broadcast" className="mt-4"><BroadcastPanel /></TabsContent>
-          <TabsContent value="activity" className="mt-4"><ActivityPanel /></TabsContent>
-          <TabsContent value="streakpush" className="mt-4"><StreakAndPushPanel /></TabsContent>
-          <TabsContent value="referrals" className="mt-4"><ReferralsAdminPanel /></TabsContent>
-          <TabsContent value="emblems" className="mt-4"><EmblemModerationPanel /></TabsContent>
-          <TabsContent value="vip" className="mt-4"><VipAdminPanel /></TabsContent>
-          <TabsContent value="spotlights" className="mt-4"><SpotlightsAdminPanel /></TabsContent>
-        </Tabs>
+            <Card className="glass-strong overflow-hidden border-primary/30">
+              <div className="flex items-center gap-2 p-3 border-b border-primary/20">
+                <button
+                  onClick={() => setSidebarOpen((v) => !v)}
+                  className="h-8 w-8 grid place-items-center rounded-lg hover:bg-primary/10 text-primary shrink-0"
+                  aria-label="Toggle sidebar"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                {sidebarOpen && (
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground">Navigation</div>
+                  </div>
+                )}
+              </div>
+              <nav className="max-h-[calc(100vh-160px)] overflow-y-auto py-2">
+                {navItems.map((item) => {
+                  const count = item.alertKey ? alerts[item.alertKey] ?? 0 : 0;
+                  const active = item.tab === activeTab;
+                  return (
+                    <button
+                      key={item.tab}
+                      onClick={() => setActiveTab(item.tab)}
+                      title={item.label}
+                      className={`relative w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? "bg-primary/15 text-primary border-l-2 border-primary"
+                          : "text-muted-foreground hover:bg-primary/5 hover:text-foreground border-l-2 border-transparent"
+                      } ${sidebarOpen ? "" : "justify-center"}`}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
+                      {count > 0 && (
+                        <span className={`h-2 w-2 rounded-full bg-destructive shrink-0 ${sidebarOpen ? "" : "absolute top-1 right-1"}`} />
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </Card>
+          </aside>
+
+          {/* Mobile nav: select */}
+          <div className="md:hidden w-full mb-4">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {navItems.map((n) => (
+                  <SelectItem key={n.tab} value={n.tab}>{n.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Main content */}
+          <main className="flex-1 min-w-0 space-y-4">
+            {/* Command center header */}
+            <div className="relative overflow-hidden rounded-2xl p-4 border border-primary/30 shadow-luxury bg-gradient-to-br from-card/90 via-card/70 to-primary/10 backdrop-blur-xl">
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold" />
+              <div className="relative flex items-center gap-3 flex-wrap">
+                <button
+                  className="md:hidden h-9 w-9 grid place-items-center rounded-lg bg-primary/10 text-primary"
+                  onClick={() => setSidebarOpen((v) => !v)}
+                  aria-label="Menu"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div className="h-11 w-11 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40">
+                  <img src={lslLogo} alt="LSL" className="h-9 w-9 object-contain" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
+                  <h1 className="text-2xl font-bold gradient-gold-text">Admin Console</h1>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <Badge variant="outline" className="border-destructive/50 text-destructive text-[9px] h-4">Admin</Badge>
+                    <Badge variant="outline" className="border-primary/50 text-primary text-[9px] h-4">Moderator</Badge>
+                    <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-[9px] h-4">Sponsor</Badge>
+                  </div>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+                    <RotateCw className="h-3 w-3 mr-1" />Reload
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+                    <Zap className="h-3 w-3 mr-1" />Hard refresh
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setActiveTab("broadcast")}>
+                    <Send className="h-3 w-3 mr-1" />Broadcast reload
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Section label */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+              <activeMeta.icon className="h-4 w-4 text-primary" />
+              <span className="font-bold text-foreground">{activeMeta.label}</span>
+            </div>
+
+            {panels[activeTab]}
+          </main>
+        </div>
       </div>
     </Layout>
   );
 }
+
+/* ============================ DASHBOARD OVERVIEW ============================ */
+function DashboardOverviewPanel({ alerts, onOpen }: { alerts: Record<string, number>; onOpen: (tab: string) => void }) {
+  const [s, setS] = useState<any>(null);
+  const [series, setSeries] = useState<any[]>([]);
+  const [recent, setRecent] = useState<any[]>([]);
+  const [liveMatches, setLiveMatches] = useState<any[]>([]);
+  useEffect(() => {
+    (async () => {
+      const [u, b, t, openMatches, ticketsBooked, tokenReqs, wd, promoReqs, appeals, reports, audit, live] = await Promise.all([
+        supabase.from("profiles").select("created_at, token_balance, is_banned"),
+        supabase.from("bets").select("status, stake, potential_payout, created_at"),
+        supabase.from("token_transactions").select("amount, kind, created_at"),
+        supabase.from("matches").select("id", { count: "exact", head: true }).neq("status", "ended"),
+        supabase.from("bets").select("id", { count: "exact", head: true }),
+        supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
+        supabase.from("audit_logs").select("action,target_type,created_at,actor_id").order("created_at", { ascending: false }).limit(8),
+        supabase.from("matches").select("id,name,home_score,away_score,status,is_virtual").eq("status", "live").eq("is_virtual", false).limit(6),
+      ]);
+      const users = u.data ?? [];
+      const bets = b.data ?? [];
+      const txs = t.data ?? [];
+      const totalStaked = bets.reduce((a, x: any) => a + (x.stake ?? 0), 0);
+      const totalPaid = bets.filter((x: any) => x.status === "won").reduce((a, x: any) => a + (x.potential_payout ?? 0), 0);
+      setS({
+        totalUsers: users.length,
+        bannedUsers: users.filter((x: any) => x.is_banned).length,
+        circulating: users.reduce((a, x: any) => a + (x.token_balance ?? 0), 0),
+        totalBets: bets.length,
+        wonBets: bets.filter((x: any) => x.status === "won").length,
+        lostBets: bets.filter((x: any) => x.status === "lost").length,
+        openBets: bets.filter((x: any) => x.status === "pending" || x.status === "open").length,
+        totalStaked, totalPaid, houseEdge: totalStaked - totalPaid,
+        debits: txs.filter((x: any) => x.amount < 0).reduce((a, x: any) => a + Math.abs(x.amount), 0),
+        credits: txs.filter((x: any) => x.amount > 0).reduce((a, x: any) => a + x.amount, 0),
+        openMatches: openMatches.count ?? 0,
+        ticketsBooked: ticketsBooked.count ?? 0,
+        tokenReqs: tokenReqs.count ?? 0,
+        wd: wd.count ?? 0,
+        promoReqs: promoReqs.count ?? 0,
+        appeals: appeals.count ?? 0,
+        reports: reports.count ?? 0,
+      });
+      // 14d series
+      const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
+      const today = new Date(); today.setHours(0,0,0,0);
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(today); d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(5, 10);
+        days[d.toISOString().slice(0,10)] = { day: key, bets: 0, staked: 0, users: 0 };
+      }
+      bets.forEach((x: any) => {
+        const k = (x.created_at ?? "").slice(0, 10);
+        if (days[k]) { days[k].bets += 1; days[k].staked += Number(x.stake ?? 0); }
+      });
+      users.forEach((x: any) => {
+        const k = (x.created_at ?? "").slice(0, 10);
+        if (days[k]) days[k].users += 1;
+      });
+      setSeries(Object.values(days));
+      setRecent(audit.data ?? []);
+      setLiveMatches(live.data ?? []);
+    })();
+  }, []);
+
+  if (!s) return <div className="text-sm text-muted-foreground">Loading dashboard…</div>;
+
+  const topRow = [
+    { icon: Users, label: "USERS", sub: "TOTAL USERS", value: s.totalUsers },
+    { icon: Trophy, label: "OPEN MATCHES", sub: "LIVE & UPCOMING", value: s.openMatches },
+    { icon: AlertTriangle, label: "PENDING REQUESTS", sub: "AWAITING ACTION", value: (s.tokenReqs + s.wd + s.promoReqs + s.appeals) },
+    { icon: Coins, label: "TOKENS IN CIRCULATION", sub: "TOTAL SUPPLY", value: s.circulating.toLocaleString() },
+    { icon: AlertTriangle, label: "OPEN REPORTS", sub: "REPORTED ITEMS", value: s.reports },
+  ];
+  const midRow = [
+    { icon: Ticket, label: "BOOKED TICKETS", sub: "TOTAL BOOKED", value: s.ticketsBooked },
+    { icon: Coins, label: "TOKEN REQUESTS", sub: "REQUESTED TOKENS", value: s.tokenReqs },
+    { icon: Wallet, label: "WITHDRAWALS", sub: "PENDING PAYOUTS", value: s.wd },
+    { icon: Tag, label: "PROMO REQUESTS", sub: "PENDING PROMOS", value: s.promoReqs },
+    { icon: AlertTriangle, label: "BAN APPEALS", sub: "PENDING APPEALS", value: s.appeals },
+  ];
+
+  const StatTile = ({ icon: Icon, label, sub, value }: any) => (
+    <Card className="glass p-3 relative overflow-hidden border-primary/20">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-gold" />
+      <Icon className="h-4 w-4 text-primary mb-2" />
+      <div className="text-2xl font-black gradient-gold-text leading-tight">{value}</div>
+      <div className="text-[9px] uppercase tracking-[0.18em] text-primary/80 mt-1 font-bold">{label}</div>
+      <div className="text-[8px] uppercase tracking-[0.18em] text-muted-foreground">{sub}</div>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Top stats */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        {topRow.map((x) => <StatTile key={x.label} {...x} />)}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        {midRow.map((x) => <StatTile key={x.label} {...x} />)}
+      </div>
+
+      {/* Charts */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card className="glass p-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Volume over time</div>
+            <div className="text-[10px] text-muted-foreground">Last 14 days</div>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={series}>
+              <defs>
+                <linearGradient id="dStake" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={9} />
+              <YAxis stroke="var(--muted-foreground)" fontSize={9} />
+              <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+              <Area type="monotone" dataKey="staked" stroke="var(--primary)" fill="url(#dStake)" name="Staked" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card className="glass p-4">
+          <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">New users per day</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={series}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={9} />
+              <YAxis stroke="var(--muted-foreground)" fontSize={9} />
+              <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
+              <Bar dataKey="users" fill="var(--primary)" radius={[6,6,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      {/* Bottom stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        <StatTile icon={Users} label="TOTAL USERS" sub="" value={s.totalUsers} />
+        <StatTile icon={X} label="BANNED USERS" sub="" value={s.bannedUsers} />
+        <StatTile icon={Coins} label="TOKENS CIRCULATING" sub="" value={s.circulating.toLocaleString()} />
+        <StatTile icon={Ticket} label="TOTAL BETS" sub="" value={s.totalBets} />
+        <StatTile icon={Check} label="WON BETS" sub="" value={s.wonBets} />
+        <StatTile icon={X} label="LOST BETS" sub="" value={s.lostBets} />
+        <StatTile icon={ClipboardList} label="OPEN BETS" sub="" value={s.openBets} />
+        <StatTile icon={Coins} label="TOTAL STAKED" sub="" value={s.totalStaked.toLocaleString()} />
+        <StatTile icon={Wallet} label="TOTAL PAID OUT" sub="" value={s.totalPaid.toLocaleString()} />
+        <StatTile icon={BarChart3} label="NET (HOUSE)" sub="" value={s.houseEdge.toLocaleString()} />
+      </div>
+
+      {/* Recent activity + Live matches + Quick actions */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Card className="glass p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Recent Activity</div>
+            <button onClick={() => onOpen("audit")} className="text-[10px] text-primary hover:underline">View all</button>
+          </div>
+          <ul className="space-y-2 text-xs">
+            {recent.length === 0 && <li className="text-muted-foreground">No recent activity.</li>}
+            {recent.map((r, i) => (
+              <li key={i} className="flex items-start gap-2 border-b border-border/40 pb-2 last:border-0">
+                <span className="h-6 w-6 grid place-items-center rounded-md bg-primary/15 text-primary shrink-0"><ActivityIcon className="h-3 w-3" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold truncate">{r.action}</div>
+                  <div className="text-[10px] text-muted-foreground">{r.target_type} · {new Date(r.created_at).toLocaleString()}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="glass p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Live Matches</div>
+            <button onClick={() => onOpen("matches")} className="text-[10px] text-primary hover:underline">View all</button>
+          </div>
+          <ul className="space-y-2 text-xs">
+            {liveMatches.length === 0 && <li className="text-muted-foreground">No live matches right now.</li>}
+            {liveMatches.map((m) => (
+              <li key={m.id} className="flex items-center gap-2 border-b border-border/40 pb-2 last:border-0">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="font-bold truncate flex-1">{m.name}</div>
+                <span className="font-mono text-primary">{m.home_score}–{m.away_score}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="glass p-4">
+          <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">Quick Actions</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { icon: UserPlus, label: "Users", tab: "users" },
+              { icon: Trophy, label: "Matches", tab: "matches" },
+              { icon: Send, label: "Broadcast", tab: "broadcast" },
+              { icon: Tag, label: "Promos", tab: "promos" },
+              { icon: Wallet, label: "House", tab: "housewallet" },
+              { icon: FileText, label: "Reports", tab: "reports" },
+              { icon: ClipboardList, label: "Bets", tab: "bettracker" },
+              { icon: SettingsIcon, label: "Settings", tab: "settings" },
+              { icon: LifeBuoyShim, label: "Tickets", tab: "tickets" },
+            ].map((q) => (
+              <button
+                key={q.label}
+                onClick={() => onOpen(q.tab)}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-primary/20 bg-card/50 hover:bg-primary/10 hover:border-primary/40 transition"
+              >
+                <q.icon className="h-4 w-4 text-primary" />
+                <span className="text-[10px] font-bold">{q.label}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* System status */}
+      <Card className="glass p-4">
+        <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">System Status</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+          {["Platform", "Database", "Payments", "Broadcast", "AI Engine"].map((s) => (
+            <div key={s} className="flex items-center justify-between px-3 py-2 rounded-lg bg-card/50 border border-border/40">
+              <span className="text-muted-foreground">{s}</span>
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />ONLINE
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// shim to avoid extra import; Ticket icon already imported
+const LifeBuoyShim = Ticket;
 
 async function logAudit(action: string, target_type: string, target_id?: string, metadata?: any) {
   const u = (await supabase.auth.getUser()).data.user;
