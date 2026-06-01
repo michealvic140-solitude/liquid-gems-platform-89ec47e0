@@ -178,7 +178,7 @@ function LockConfirmDialog({ round, onClose }: { round: Round; onClose: () => vo
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button variant="destructive" disabled={busy} onClick={async () => {
             setBusy(true);
-            const { error } = await supabase.rpc("admin_lock_virtual_round", { _match_id: round.id });
+            const { error } = await supabase.rpc("admin_lock_virtual_round", { match_id: round.id });
             setBusy(false);
             if (error) return toast.error(error.message);
             toast.success("Round locked");
@@ -584,7 +584,7 @@ function VirtualWalletPanel() {
     if (!amount || amount <= 0) return toast.error("Enter a positive amount");
     if (!reason.trim()) return toast.error("Reason is required");
     setBusy(true);
-    const { error } = await supabase.rpc("virtual_wallet_admin_adjust" as any, { _amount: sign * amount, _reason: reason });
+    const { error } = await supabase.rpc("virtual_wallet_admin_adjust" as any, { delta: sign * amount, reason });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(sign > 0 ? "Wallet funded" : "Wallet debited");

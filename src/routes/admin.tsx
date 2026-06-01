@@ -619,7 +619,7 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
   async function kickUser() {
     if (!isAdmin) return;
     if (!actionReason.trim()) { toast.error("Reason is required to kick a user."); return; }
-    const { error } = await (supabase as any).rpc("admin_kick_user", { _user_id: user.id, _reason: actionReason.trim() });
+    const { error } = await (supabase as any).rpc("admin_kick_user", { user_id: user.id, _reason: actionReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("User kicked — their active browser will sign out.");
     setActionReason("");
@@ -1171,7 +1171,7 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
     if (!bet) continue;
     if (["suspended", "refunded", "void", "cashed_out"].includes(bet.status)) continue;
     if (allWon) {
-      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { _bet_id: bid });
+      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { bet_id: bid });
       if (payErr) {
         toast.error(`Could not credit winnings for ${bet.tracking_id}: ${payErr.message}`);
       }
@@ -2836,7 +2836,7 @@ function WithdrawalsPanel() {
     });
     if (!ok || typeof ok !== "object") return;
     const note = ok.value;
-    const { error } = await supabase.rpc("review_withdrawal_request", { _id: r.id, _approve: approve, _note: note || undefined });
+    const { error } = await supabase.rpc("review_withdrawal_request", { id: r.id, _approve: approve, _note: note || undefined });
     if (error) toast.error(error.message); else {
       toast.success("Done");
       await logAudit(`withdrawal_${approve ? "approved" : "declined"}`, "withdrawal", r.id, {
@@ -2876,7 +2876,7 @@ function WithdrawalsPanel() {
 /* ============================ LEADERBOARD ADMIN ============================ */
 function LeaderboardAdminPanel() {
   const [list, setList] = useState<any[]>([]);
-  const [draft, setDraft] = useState({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
+  const [draft, setDraft] = useState({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
   const [editId, setEditId] = useState<string | null>(null);
   const confirm = useConfirm();
   async function load() { setList((await supabase.from("leaderboard_overrides").select("*").order("kind").order("manual_rank", { ascending: true, nullsFirst: false })).data ?? []); }
@@ -2889,7 +2889,7 @@ function LeaderboardAdminPanel() {
     if (error) { toast.error(error.message); return; }
     await logAudit(editId ? "leaderboard_override_edit" : "leaderboard_override_create", "leaderboard_overrides", editId ?? undefined, payload);
     toast.success(editId ? "Entry updated" : "Override saved");
-    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
+    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
     setEditId(null);
     load();
   }
@@ -2899,24 +2899,6 @@ function LeaderboardAdminPanel() {
     await logAudit("leaderboard_override_delete", "leaderboard_overrides", id);
     load();
   }
-  async function toggleHide(o: any) {
-    const next = !o.is_hidden;
-    const { error } = await supabase.from("leaderboard_overrides").update({ is_hidden: next }).eq("id", o.id);
-    if (error) { toast.error(error.message); return; }
-    await logAudit(next ? "leaderboard_hide" : "leaderboard_unhide", "leaderboard_overrides", o.id, { name: o.name, kind: o.kind });
-    toast.success(next ? `${o.name} hidden from leaderboard` : `${o.name} restored`);
-    load();
-  }
-  async function hideTeam() {
-    if (!draft.name) { toast.error("Enter the team or shooter name to hide"); return; }
-    const payload: any = { kind: draft.kind, name: draft.name, is_hidden: true, wins: 0, losses: 0, draws: 0, played: 0, points: 0 };
-    const { error } = await supabase.from("leaderboard_overrides").upsert(payload, { onConflict: "id" });
-    if (error) { toast.error(error.message); return; }
-    await logAudit("leaderboard_hide", "leaderboard_overrides", undefined, payload);
-    toast.success(`${draft.name} hidden from leaderboard`);
-    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
-    load();
-  }
   function editEntry(o: any) {
     setEditId(o.id);
     setDraft({
@@ -2924,20 +2906,19 @@ function LeaderboardAdminPanel() {
       wins: Number(o.wins ?? 0), losses: Number(o.losses ?? 0), draws: Number(o.draws ?? 0),
       played: Number(o.played ?? 0), points: Number(o.points ?? 0),
       manual_rank: o.manual_rank ? String(o.manual_rank) : "",
-      is_hidden: !!o.is_hidden,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function clearAll() {
     if (!await confirm({
-      title: `Clear ALL ${list.length} leaderboard entries?`,
-      description: "This permanently removes every manual leaderboard override. Auto-computed stats from match results are unaffected.",
+      title: `Reset the entire leaderboard?`,
+      description: "This wipes all season points AND manual overrides. Auto-computed stats will start fresh from real (non-virtual) matches.",
       tone: "danger", confirmText: "Clear leaderboard",
     })) return;
-    const { error } = await supabase.from("leaderboard_overrides").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    const { error } = await supabase.rpc("admin_clear_leaderboard" as any);
     if (error) { toast.error(error.message); return; }
     await logAudit("leaderboard_clear_all", "leaderboard_overrides", undefined, { previous_count: list.length });
-    toast.success("Leaderboard cleared");
+    toast.success("Leaderboard fully reset");
     load();
   }
   return (
@@ -2945,13 +2926,13 @@ function LeaderboardAdminPanel() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs text-muted-foreground">{list.length} manual override{list.length === 1 ? "" : "s"}</div>
         <Button variant="destructive" size="sm" onClick={clearAll} disabled={list.length === 0}>
-          <Trash2 className="h-3 w-3 mr-1" />Clear Leaderboard
+          <Trash2 className="h-3 w-3 mr-1" />Reset Leaderboard
         </Button>
       </div>
       <Card className="glass-strong p-4 space-y-2">
         <div className="font-bold flex items-center gap-2">
           {editId ? <><Pencil className="h-4 w-4 text-primary" />Editing entry</> : "Manual override (auto-stats are computed from match results)"}
-          {editId && <button onClick={() => { setEditId(null); setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false }); }} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Cancel edit</button>}
+          {editId && <button onClick={() => { setEditId(null); setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" }); }} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Cancel edit</button>}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Select value={draft.kind} onValueChange={(v) => setDraft({ ...draft, kind: v })}>
@@ -2971,23 +2952,14 @@ function LeaderboardAdminPanel() {
           <Button className="btn-luxury" onClick={save}>
             {editId ? <><Check className="h-4 w-4 mr-1" />Update entry</> : <><Plus className="h-4 w-4 mr-1" />Save override</>}
           </Button>
-          {!editId && (
-            <Button variant="destructive" onClick={hideTeam} title="Hide this team/shooter from the public leaderboard without touching match history">
-              <Trash2 className="h-4 w-4 mr-1" />Remove from leaderboard
-            </Button>
-          )}
         </div>
       </Card>
       <div className="space-y-1">
         {list.map((o) => (
-          <Card key={o.id} className={`glass p-2 flex items-center gap-2 flex-wrap text-sm ${o.is_hidden ? "opacity-60 border-destructive/40" : ""}`}>
+          <Card key={o.id} className="glass p-2 flex items-center gap-2 flex-wrap text-sm">
             <Badge variant="outline" className="capitalize">{o.kind}</Badge>
-            {o.is_hidden && <Badge variant="destructive" className="text-[10px]">Hidden</Badge>}
             <div className="font-bold flex-1 min-w-0 truncate">{o.name} {o.top_player && <span className="text-xs text-muted-foreground">· top: {o.top_player}</span>}</div>
             <span className="text-xs text-muted-foreground">W {o.wins} · L {o.losses} · D {o.draws} · PTS {o.points}{o.manual_rank ? ` · #${o.manual_rank}` : ""}</span>
-            <Button size="sm" variant="outline" onClick={() => toggleHide(o)} title={o.is_hidden ? "Show on leaderboard" : "Hide from leaderboard"}>
-              {o.is_hidden ? <Eye className="h-3 w-3" /> : <X className="h-3 w-3" />}
-            </Button>
             <Button size="sm" variant="outline" onClick={() => editEntry(o)}><Pencil className="h-3 w-3" /></Button>
             <Button size="sm" variant="destructive" onClick={() => del(o.id)}><Trash2 className="h-3 w-3" /></Button>
           </Card>
@@ -3039,14 +3011,14 @@ function BetTrackerPanel() {
   async function suspend(b: any) {
     const ok = await confirm({ title: "Suspend / flag ticket?", description: `Tracking ${b.tracking_id} will stop from crediting until admin unsuspends it.`, tone: "danger", confirmText: "Suspend ticket", inputLabel: "Reason", inputPlaceholder: "Why is this betslip being suspended?" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_suspend_bet", { _bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_suspend_bet", { bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_suspend", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket suspended"); load();
     }
   }
   async function unsuspend(b: any) {
-    const { error } = await supabase.rpc("admin_unsuspend_bet", { _bet_id: b.id });
+    const { error } = await supabase.rpc("admin_unsuspend_bet", { bet_id: b.id });
     if (error) toast.error(error.message); else {
       await logAudit("bet_unsuspend", "bet", b.id, { tracking_id: b.tracking_id, user_id: b.user_id, target_user_email: b.profiles?.email });
       toast.success("Ticket reactivated"); load();
@@ -3055,7 +3027,7 @@ function BetTrackerPanel() {
   async function del(b: any) {
     const ok = await confirm({ title: "Delete ticket?", description: `Tracking ${b.tracking_id}. You can optionally refund the stake before removal.`, tone: "danger", confirmText: "Delete ticket", cancelText: "Cancel", checkboxLabel: "Refund stake to user", inputLabel: "Admin note", inputPlaceholder: "Optional reason shown in logs…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_delete_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_delete_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_delete", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket deleted & refunded" : "Ticket deleted"); load();
@@ -3064,7 +3036,7 @@ function BetTrackerPanel() {
   async function refund(b: any) {
     const ok = await confirm({ title: "Mark ticket as refunded?", description: `Refunds ${Number(b.stake).toLocaleString()} tokens and closes ${b.tracking_id}.`, confirmText: "Refund stake", inputLabel: "Refund reason", inputPlaceholder: "Reason for refund…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_refund_bet", { _bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_refund_bet", { bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_refund", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket refunded"); load();
@@ -3073,7 +3045,7 @@ function BetTrackerPanel() {
   async function voidBet(b: any) {
     const ok = await confirm({ title: "Mark ticket as void?", description: `Void ${b.tracking_id}. You can return the stake while keeping the ticket record visible.`, confirmText: "Mark void", checkboxLabel: "Refund stake to user", inputLabel: "Void reason", inputPlaceholder: "Reason for voiding this ticket…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await (supabase as any).rpc("admin_void_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await (supabase as any).rpc("admin_void_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_void", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket voided & refunded" : "Ticket voided"); load();
@@ -3268,13 +3240,13 @@ function PromoRequestsPanel() {
   async function approve(r: any) {
     const ok = await confirm({ title: "Approve & generate code?", description: `Will create a ${Number(r.amount).toLocaleString()}-token promo code with ${r.usage_limit} uses.`, confirmText: "Approve", inputLabel: "Note to sponsor", inputPlaceholder: "Optional approval note…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("approve_promo_request", { _id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("approve_promo_request", { id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Promo code approved & generated"); load(); }
   }
   async function decline(r: any) {
     const ok = await confirm({ title: "Decline request?", tone: "danger", confirmText: "Decline", inputLabel: "Reason", inputPlaceholder: "Tell the sponsor why it was declined…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("decline_promo_request", { _id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("decline_promo_request", { id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Request declined"); load(); }
   }
 
@@ -3549,14 +3521,14 @@ function HouseWalletPanel() {
       confirmText: next ? "Pause Wallet" : "Resume Wallet",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("house_set_paused", { _paused: next, _reason: next ? (pauseReason || undefined) : undefined });
+    const { error } = await supabase.rpc("house_set_paused", { paused: next, reason: next ? (pauseReason || undefined) : undefined });
     if (error) toast.error(error.message);
     else { toast.success(next ? "Payouts paused" : "Payouts resumed"); setPauseReason(""); }
   }
 
   async function adjust() {
     if (!adjAmt || !adjReason.trim()) { toast.error("Amount and reason required"); return; }
-    const { error } = await supabase.rpc("house_manual_adjust", { _amount: adjAmt, _reason: adjReason.trim() });
+    const { error } = await supabase.rpc("house_manual_adjust", { amount: adjAmt, _reason: adjReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("Wallet adjusted");
     setAdjustOpen(false); setAdjAmt(0); setAdjReason("");

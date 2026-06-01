@@ -10,6 +10,9 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
+    // Treat short transitions as pending so the spinner has time to show.
+    defaultPendingMs: 80,
+    defaultPendingMinMs: 250,
   });
 
   return router;

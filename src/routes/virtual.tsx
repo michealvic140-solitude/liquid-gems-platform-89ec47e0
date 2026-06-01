@@ -356,7 +356,9 @@ function VirtualRoundCard({ match, animSec }: { match: VirtualMatch; animSec: nu
           : /correct\s*score/i.test(n)
             ? 3
             : 4;
-  const markets = [...(match.markets ?? [])].sort((a, b) => order(a.name) - order(b.name));
+  const markets = [...(match.markets ?? [])]
+    .filter((mk) => !/total\s*kill/i.test(mk.name) && !/correct\s*score/i.test(mk.name))
+    .sort((a, b) => order(a.name) - order(b.name));
 
   function pick(mk: MarketRow, o: OddRow) {
     if (locked) return;

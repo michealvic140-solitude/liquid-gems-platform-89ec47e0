@@ -37,6 +37,7 @@ function RegisterPage() {
     gang_type: "",
     gang_name: "",
     server: "LOMITA AFR",
+    referral_code: "",
   });
   const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,7 +56,7 @@ function RegisterPage() {
     if (f.password.length < 6) return toast.error("Password must be at least 6 characters");
     if (f.password !== f.confirm_password) return toast.error("Passwords do not match");
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email: f.email, password: f.password,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
@@ -68,11 +69,18 @@ function RegisterPage() {
           server: f.server,
           gang_name: f.gang_name,
           gang_type: f.gang_type,
+          referral_code: f.referral_code ? f.referral_code.trim().toUpperCase() : null,
         },
       },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
+    // If signup auto-confirms, try redeeming the referral code immediately.
+    if (f.referral_code && signUpData?.session) {
+      const { data: r } = await supabase.rpc("redeem_referral_code", { _code: f.referral_code.trim() } as any);
+      const ok = (r as any)?.ok;
+      if (ok) toast.success("Referral code redeemed");
+    }
     toast.success("Account created! Check your email to verify.");
     nav({ to: "/login" });
   };
@@ -107,6 +115,11 @@ function RegisterPage() {
               </div>
             )}
             <div className="md:col-span-2"><Label>Server *</Label><Input required maxLength={60} value={f.server} onChange={(e) => set("server", e.target.value)} /></div>
+            <div className="md:col-span-2">
+              <Label>Referral code (optional)</Label>
+              <Input maxLength={32} placeholder="e.g. LSL-A1B2C3" value={f.referral_code} onChange={(e) => set("referral_code", e.target.value.toUpperCase())} className="font-mono uppercase" />
+              <p className="text-[11px] text-muted-foreground mt-1">Got a code from a friend? Drop it here to claim bonus tokens on signup.</p>
+            </div>
             <div className="md:col-span-2 flex items-start gap-2 text-sm">
               <Checkbox id="terms" checked={accepted} onCheckedChange={(v) => setAccepted(!!v)} />
               <label htmlFor="terms" className="text-muted-foreground">I accept the platform terms. Virtual tokens only — not real money.</label>

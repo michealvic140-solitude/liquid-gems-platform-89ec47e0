@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { parseUA } from "@/lib/ua";
 
 export type AppRole = "viewer" | "shooter" | "gang_leader" | "registered" | "sponsor" | "moderator" | "admin";
 
@@ -113,14 +114,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
     let stopped = false;
+    const startedAt = new Date().toISOString();
+    const ua = navigator.userAgent.slice(0, 500);
+    const parsed = parseUA(ua);
     const ping = async () => {
       if (stopped) return;
       try {
         await supabase.from("user_sessions").upsert({
           user_id: user.id,
           last_seen: new Date().toISOString(),
+          session_start: startedAt,
+          signed_in_at: startedAt,
           route: window.location.pathname,
-          user_agent: navigator.userAgent.slice(0, 255),
+          user_agent: ua.slice(0, 255),
+          device_type: parsed.device_type,
+          browser: parsed.browser,
+          os: parsed.os,
         }, { onConflict: "user_id" });
       } catch {}
     };
