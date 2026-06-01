@@ -619,7 +619,7 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
   async function kickUser() {
     if (!isAdmin) return;
     if (!actionReason.trim()) { toast.error("Reason is required to kick a user."); return; }
-    const { error } = await (supabase as any).rpc("admin_kick_user", { _user_id: user.id, _reason: actionReason.trim() });
+    const { error } = await (supabase as any).rpc("admin_kick_user", { user_id: user.id, _reason: actionReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("User kicked — their active browser will sign out.");
     setActionReason("");
@@ -1171,7 +1171,7 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
     if (!bet) continue;
     if (["suspended", "refunded", "void", "cashed_out"].includes(bet.status)) continue;
     if (allWon) {
-      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { _bet_id: bid });
+      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { bet_id: bid });
       if (payErr) {
         toast.error(`Could not credit winnings for ${bet.tracking_id}: ${payErr.message}`);
       }
@@ -2836,7 +2836,7 @@ function WithdrawalsPanel() {
     });
     if (!ok || typeof ok !== "object") return;
     const note = ok.value;
-    const { error } = await supabase.rpc("review_withdrawal_request", { _id: r.id, _approve: approve, _note: note || undefined });
+    const { error } = await supabase.rpc("review_withdrawal_request", { id: r.id, _approve: approve, _note: note || undefined });
     if (error) toast.error(error.message); else {
       toast.success("Done");
       await logAudit(`withdrawal_${approve ? "approved" : "declined"}`, "withdrawal", r.id, {
@@ -3039,14 +3039,14 @@ function BetTrackerPanel() {
   async function suspend(b: any) {
     const ok = await confirm({ title: "Suspend / flag ticket?", description: `Tracking ${b.tracking_id} will stop from crediting until admin unsuspends it.`, tone: "danger", confirmText: "Suspend ticket", inputLabel: "Reason", inputPlaceholder: "Why is this betslip being suspended?" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_suspend_bet", { _bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_suspend_bet", { bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_suspend", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket suspended"); load();
     }
   }
   async function unsuspend(b: any) {
-    const { error } = await supabase.rpc("admin_unsuspend_bet", { _bet_id: b.id });
+    const { error } = await supabase.rpc("admin_unsuspend_bet", { bet_id: b.id });
     if (error) toast.error(error.message); else {
       await logAudit("bet_unsuspend", "bet", b.id, { tracking_id: b.tracking_id, user_id: b.user_id, target_user_email: b.profiles?.email });
       toast.success("Ticket reactivated"); load();
@@ -3055,7 +3055,7 @@ function BetTrackerPanel() {
   async function del(b: any) {
     const ok = await confirm({ title: "Delete ticket?", description: `Tracking ${b.tracking_id}. You can optionally refund the stake before removal.`, tone: "danger", confirmText: "Delete ticket", cancelText: "Cancel", checkboxLabel: "Refund stake to user", inputLabel: "Admin note", inputPlaceholder: "Optional reason shown in logs…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_delete_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_delete_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_delete", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket deleted & refunded" : "Ticket deleted"); load();
@@ -3064,7 +3064,7 @@ function BetTrackerPanel() {
   async function refund(b: any) {
     const ok = await confirm({ title: "Mark ticket as refunded?", description: `Refunds ${Number(b.stake).toLocaleString()} tokens and closes ${b.tracking_id}.`, confirmText: "Refund stake", inputLabel: "Refund reason", inputPlaceholder: "Reason for refund…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_refund_bet", { _bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_refund_bet", { bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_refund", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket refunded"); load();
@@ -3073,7 +3073,7 @@ function BetTrackerPanel() {
   async function voidBet(b: any) {
     const ok = await confirm({ title: "Mark ticket as void?", description: `Void ${b.tracking_id}. You can return the stake while keeping the ticket record visible.`, confirmText: "Mark void", checkboxLabel: "Refund stake to user", inputLabel: "Void reason", inputPlaceholder: "Reason for voiding this ticket…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await (supabase as any).rpc("admin_void_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await (supabase as any).rpc("admin_void_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_void", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket voided & refunded" : "Ticket voided"); load();
@@ -3268,13 +3268,13 @@ function PromoRequestsPanel() {
   async function approve(r: any) {
     const ok = await confirm({ title: "Approve & generate code?", description: `Will create a ${Number(r.amount).toLocaleString()}-token promo code with ${r.usage_limit} uses.`, confirmText: "Approve", inputLabel: "Note to sponsor", inputPlaceholder: "Optional approval note…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("approve_promo_request", { _id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("approve_promo_request", { id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Promo code approved & generated"); load(); }
   }
   async function decline(r: any) {
     const ok = await confirm({ title: "Decline request?", tone: "danger", confirmText: "Decline", inputLabel: "Reason", inputPlaceholder: "Tell the sponsor why it was declined…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("decline_promo_request", { _id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("decline_promo_request", { id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Request declined"); load(); }
   }
 
@@ -3549,14 +3549,14 @@ function HouseWalletPanel() {
       confirmText: next ? "Pause Wallet" : "Resume Wallet",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("house_set_paused", { _paused: next, _reason: next ? (pauseReason || undefined) : undefined });
+    const { error } = await supabase.rpc("house_set_paused", { paused: next, reason: next ? (pauseReason || undefined) : undefined });
     if (error) toast.error(error.message);
     else { toast.success(next ? "Payouts paused" : "Payouts resumed"); setPauseReason(""); }
   }
 
   async function adjust() {
     if (!adjAmt || !adjReason.trim()) { toast.error("Amount and reason required"); return; }
-    const { error } = await supabase.rpc("house_manual_adjust", { _amount: adjAmt, _reason: adjReason.trim() });
+    const { error } = await supabase.rpc("house_manual_adjust", { amount: adjAmt, _reason: adjReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("Wallet adjusted");
     setAdjustOpen(false); setAdjAmt(0); setAdjReason("");

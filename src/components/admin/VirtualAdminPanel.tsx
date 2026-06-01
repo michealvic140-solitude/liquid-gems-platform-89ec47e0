@@ -178,7 +178,7 @@ function LockConfirmDialog({ round, onClose }: { round: Round; onClose: () => vo
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button variant="destructive" disabled={busy} onClick={async () => {
             setBusy(true);
-            const { error } = await supabase.rpc("admin_lock_virtual_round", { _match_id: round.id });
+            const { error } = await supabase.rpc("admin_lock_virtual_round", { match_id: round.id });
             setBusy(false);
             if (error) return toast.error(error.message);
             toast.success("Round locked");

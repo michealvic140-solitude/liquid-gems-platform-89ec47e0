@@ -37,7 +37,7 @@ export function StreakAndPushPanel() {
 
   async function verifyXp() {
     setVerifying(true);
-    const { data, error } = await supabase.rpc("verify_xp_consistency", { _user_id: undefined });
+    const { data, error } = await supabase.rpc("verify_xp_consistency", { user_id: undefined });
     setVerifying(false);
     if (error) toast.error(error.message); else toast.success(`Checked ${(data as any)?.checked ?? 0} users · fixed ${(data as any)?.fixed ?? 0}`);
   }
@@ -169,7 +169,7 @@ export function RiskPanel() {
   }, []);
 
   async function togglePause() {
-    const { error } = await supabase.rpc("house_set_paused", { _paused: !paused, _reason: reason || undefined });
+    const { error } = await supabase.rpc("house_set_paused", { paused: !paused, reason: reason || undefined });
     if (error) return toast.error(error.message);
     toast.success(!paused ? "Payouts paused globally" : "Payouts resumed");
     load();
@@ -267,7 +267,7 @@ export function PnLPanel() {
   const [topUsers, setTopUsers] = useState<any[]>([]);
 
   async function load() {
-    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { _days: days });
+    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { days: days });
     setData(pnl);
     // build daily series from house_transactions
     const since = new Date(); since.setDate(since.getDate() - days);
@@ -479,7 +479,7 @@ export function BroadcastPanel() {
   async function send() {
     if (!title.trim()) { toast.error("Title required"); return; }
     setSending(true);
-    const { data, error } = await supabase.rpc("admin_broadcast", { _title: title, _body: body || "", _link: link || "", _segment: segment });
+    const { data, error } = await supabase.rpc("admin_broadcast", { title: title, _body: body || "", _link: link || "", _segment: segment });
     setSending(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Sent to ${(data as any)?.sent ?? 0} users`);
@@ -575,7 +575,7 @@ export function ReportsPanel() {
   const [series, setSeries] = useState<any[]>([]);
 
   async function load() {
-    const { data } = await supabase.rpc("admin_pnl_summary", { _days: days });
+    const { data } = await supabase.rpc("admin_pnl_summary", { days: days });
     setPnl(data);
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const { data: bets } = await supabase.from("bets").select("created_at,stake,potential_payout,status,settled_at").gte("created_at", since);
@@ -832,7 +832,7 @@ export function EmblemModerationPanel() {
 
   async function review(id: string, approve: boolean) {
     const note = approve ? null : prompt("Reason for rejection?") || null;
-    const { error } = await supabase.rpc("review_gang_emblem", { _id: id, _approve: approve, _note: note ?? undefined });
+    const { error } = await supabase.rpc("review_gang_emblem", { id: id, _approve: approve, _note: note ?? undefined });
     if (error) toast.error(error.message); else { toast.success(approve ? "Approved" : "Rejected"); load(); }
   }
 
@@ -902,7 +902,7 @@ export function VipAdminPanel() {
   }
 
   async function adjust(uid: string, delta: number) {
-    const { error } = await supabase.rpc("admin_adjust_xp", { _user_id: uid, _delta: delta, _reason: "admin manual" });
+    const { error } = await supabase.rpc("admin_adjust_xp", { user_id: uid, _delta: delta, _reason: "admin manual" });
     if (error) toast.error(error.message); else { toast.success("XP adjusted"); load(); }
   }
 
