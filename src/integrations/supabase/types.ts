@@ -777,29 +777,50 @@ export type Database = {
         Row: {
           bonus_points: number
           created_at: string
+          draws: number
           id: string
           kind: string
+          losses: number
           manual_rank: number | null
+          name: string | null
           note: string | null
+          played: number
+          points: number
+          top_player: string | null
           user_id: string
+          wins: number
         }
         Insert: {
           bonus_points?: number
           created_at?: string
+          draws?: number
           id?: string
           kind: string
+          losses?: number
           manual_rank?: number | null
+          name?: string | null
           note?: string | null
+          played?: number
+          points?: number
+          top_player?: string | null
           user_id: string
+          wins?: number
         }
         Update: {
           bonus_points?: number
           created_at?: string
+          draws?: number
           id?: string
           kind?: string
+          losses?: number
           manual_rank?: number | null
+          name?: string | null
           note?: string | null
+          played?: number
+          points?: number
+          top_player?: string | null
           user_id?: string
+          wins?: number
         }
         Relationships: []
       }
@@ -1336,6 +1357,36 @@ export type Database = {
           },
         ]
       }
+      referral_redemptions: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          referee_bonus: number
+          referrer_bonus: number
+          referrer_id: string
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          referee_bonus?: number
+          referrer_bonus?: number
+          referrer_id: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          referee_bonus?: number
+          referrer_bonus?: number
+          referrer_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       referrals: {
         Row: {
           created_at: string
@@ -1714,20 +1765,38 @@ export type Database = {
       }
       user_sessions: {
         Row: {
+          browser: string | null
+          device_type: string | null
+          ip_address: string | null
           last_seen: string
+          os: string | null
           route: string | null
+          session_start: string
+          signed_in_at: string | null
           user_agent: string | null
           user_id: string
         }
         Insert: {
+          browser?: string | null
+          device_type?: string | null
+          ip_address?: string | null
           last_seen?: string
+          os?: string | null
           route?: string | null
+          session_start?: string
+          signed_in_at?: string | null
           user_agent?: string | null
           user_id: string
         }
         Update: {
+          browser?: string | null
+          device_type?: string | null
+          ip_address?: string | null
           last_seen?: string
+          os?: string | null
           route?: string | null
+          session_start?: string
+          signed_in_at?: string | null
           user_agent?: string | null
           user_id?: string
         }
@@ -1963,7 +2032,12 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_clear_leaderboard: { Args: never; Returns: Json }
       admin_delete_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_delete_leaderboard_override: {
+        Args: { _id: string }
+        Returns: Json
+      }
       admin_exposure_per_match: {
         Args: never
         Returns: {
@@ -1984,6 +2058,21 @@ export type Database = {
       admin_set_virtual_cycle: { Args: { _running: boolean }; Returns: Json }
       admin_suspend_bet: { Args: { bet_id: string }; Returns: Json }
       admin_unsuspend_bet: { Args: { bet_id: string }; Returns: Json }
+      admin_upsert_leaderboard_override: {
+        Args: {
+          _draws: number
+          _id: string
+          _kind: string
+          _losses: number
+          _manual_rank: number
+          _name: string
+          _played: number
+          _points: number
+          _top_player: string
+          _wins: number
+        }
+        Returns: Json
+      }
       admin_void_bet: { Args: { bet_id: string }; Returns: Json }
       apply_referral_code: { Args: { code: string }; Returns: Json }
       approve_promo_request: {
@@ -2006,6 +2095,7 @@ export type Database = {
         Args: { _note?: string; id: string }
         Returns: Json
       }
+      fix_pending_virtual_bets: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2030,6 +2120,7 @@ export type Database = {
         | { Args: { _selections: Json; _stake: number }; Returns: Json }
         | { Args: { payload: Json }; Returns: Json }
       redeem_promo_code: { Args: { code: string }; Returns: Json }
+      redeem_referral_code: { Args: { _code: string }; Returns: Json }
       resolve_virtual_round: {
         Args: {
           _away_score?: number
