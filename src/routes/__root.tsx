@@ -158,10 +158,10 @@ import { BanGate } from "@/components/BanGate";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PopupAd } from "@/components/PopupAd";
 import { BetSlipFab } from "@/components/BetSlip";
+import { PageSpinner } from "@/components/PageSpinner";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const navigating = useRouterState({ select: (state) => state.status === "pending" });
   // Unregister any legacy service worker (push notifications skipped in this build)
   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
     navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
@@ -172,11 +172,7 @@ function RootComponent() {
         <BetSlipProvider>
           <ConfirmProvider>
             <MaintenanceGate>
-              {navigating && (
-                <div className="fixed inset-x-0 top-0 z-[100] h-1 bg-primary/20">
-                  <div className="h-full w-1/2 animate-shimmer bg-gradient-gold" />
-                </div>
-              )}
+              <PageSpinner />
               <Outlet />
             </MaintenanceGate>
             <BanGate />
