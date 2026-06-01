@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Ticket as TicketIcon, ChevronRight, Wallet, UserCog, CreditCard, Coins, Tag, Trophy, ListChecks, Sparkles, Lock } from "lucide-react";
 import { ChallengesPanel } from "@/components/ChallengesPanel";
-import { ReferralCard, VipCard, UserAnalyticsDashboard, BetHistoryAdvanced, GangEmblemUpload } from "@/components/UserHubSections";
+import { VipCard, GangEmblemUpload } from "@/components/UserHubSections";
+import { RedeemReferralCard } from "@/components/RedeemReferralCard";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -101,46 +102,38 @@ function Dashboard() {
 
         <div className="grid md:grid-cols-2 gap-4 mb-10">
           <VipCard />
-          <ReferralCard />
-        </div>
-
-        <div className="mb-10">
-          <UserAnalyticsDashboard bets={bets} />
+          <RedeemReferralCard />
         </div>
 
         <div className="mb-10">
           <GangEmblemUpload />
         </div>
 
-        <div className="mb-10">
-          <BetHistoryAdvanced bets={bets} />
-        </div>
-
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><TicketIcon className="h-5 w-5 text-primary" />My Bet Tickets</h2>
+        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><TicketIcon className="h-5 w-5 text-primary" />Bet History</h2>
         <div id="bets" className="space-y-3 scroll-mt-24">
           {bets.length === 0 && <p className="text-muted-foreground text-sm">No bets yet.</p>}
           {bets.map((b) => (
             <Link key={b.id} to="/ticket/$id" params={{ id: b.id }}>
-              <Card className="p-4 hover:border-primary/60 transition group">
-                <div className="flex items-center justify-between flex-wrap gap-3">
+              <Card className="p-3 hover:border-primary/60 transition group cursor-pointer">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-primary">{b.tracking_id}</span>
                       <span className="font-mono text-[10px] text-muted-foreground">· {b.booking_code}</span>
                     </div>
-                    <div className="font-bold mt-1">{b.bet_selections?.length ?? 0} selection(s) · stake {b.stake.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                    <div className="font-bold text-sm mt-0.5">{b.bet_selections?.length ?? 0} selection(s) · stake {b.stake.toLocaleString()}</div>
+                    <div className="text-[11px] text-muted-foreground truncate mt-0.5">
                       {(b.bet_selections ?? []).map((s: any) => s.matches?.name || s.selection_label).join(" · ")}
                     </div>
                   </div>
                   <div className="text-right">
-                    <Badge variant="outline" className={
+                    <Badge variant="outline" className={`text-[10px] ${
                       b.status === 'won' ? 'border-emerald-500/50 text-emerald-300' :
                       b.status === 'lost' ? 'border-destructive/50 text-destructive' :
                       b.status === 'suspended' ? 'border-amber-500/50 text-amber-300' :
                       'border-primary/50 text-primary'
-                    }>{b.status.toUpperCase()}</Badge>
-                    <div className="text-xs text-muted-foreground mt-1">Payout {b.potential_payout.toLocaleString()}</div>
+                    }`}>{b.status.toUpperCase()}</Badge>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">Payout {b.potential_payout.toLocaleString()}</div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition" />
                 </div>
