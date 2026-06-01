@@ -73,7 +73,7 @@ export function VirtualAdminPanel() {
     let b = teams[Math.floor(Math.random() * teams.length)];
     while (b.id === a.id) b = teams[Math.floor(Math.random() * teams.length)];
     try {
-      await createRound({ teamAId: a.id, teamBId: b.id, teamAName: a.name, teamBName: b.name, startInSec: 5, lockInSec: 35, matchCount: 4, teamPool: teams, oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95, totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85, oddsFirstA: 1.95, oddsFirstB: 1.95, csOdds: 7, includeWinner: true, includeFirstBlood: true, includeTotal: true, includeCS: true });
+      await createRound({ teamAId: a.id, teamBId: b.id, teamAName: a.name, teamBName: b.name, startInSec: 5, lockInSec: 35, oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95, totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85, oddsFirstA: 1.95, oddsFirstB: 1.95, csOdds: 7, includeWinner: true, includeFirstBlood: true, includeTotal: true, includeCS: true });
       toast.success("Round created");
     } catch (e: any) { toast.error(e.message); }
   }
@@ -178,7 +178,7 @@ function LockConfirmDialog({ round, onClose }: { round: Round; onClose: () => vo
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button variant="destructive" disabled={busy} onClick={async () => {
             setBusy(true);
-            const { error } = await supabase.rpc("admin_lock_virtual_round", { match_id: round.id });
+            const { error } = await supabase.rpc("admin_lock_virtual_round", { _match_id: round.id });
             setBusy(false);
             if (error) return toast.error(error.message);
             toast.success("Round locked");
@@ -231,7 +231,7 @@ function Field({ label, value, onChange, step = 1 }: { label: string; value: num
 
 type Cfg = {
   teamAId: string; teamBId: string; teamAName: string; teamBName: string;
-  startInSec: number; lockInSec: number; matchCount: number; teamPool?: TeamOpt[];
+  startInSec: number; lockInSec: number;
   oddsA: number; oddsDraw: number; oddsB: number;
   oddsFirstA: number; oddsFirstB: number;
   totalLine: number; oddsOver: number; oddsUnder: number;
@@ -248,40 +248,28 @@ async function createRound(cfg: Cfg) {
   const catId = await getVirtualCategoryId();
   const start = new Date(Date.now() + cfg.startInSec * 1000);
   const lock = new Date(Date.now() + cfg.lockInSec * 1000);
-  const batchId = crypto.randomUUID();
-  const rounds = Math.max(4, Math.min(6, Math.round(cfg.matchCount || 4)));
-  const teamsCache = cfg.teamPool?.length ? cfg.teamPool : [{ id: cfg.teamAId, name: cfg.teamAName }, { id: cfg.teamBId, name: cfg.teamBName }];
-  const pickedPairs = [{ a: { id: cfg.teamAId, name: cfg.teamAName }, b: { id: cfg.teamBId, name: cfg.teamBName } }];
-  for (let i = 1; i < rounds; i++) {
-    const a = teamsCache[Math.floor(Math.random() * teamsCache.length)] ?? pickedPairs[0].a;
-    let b = teamsCache[Math.floor(Math.random() * teamsCache.length)] ?? pickedPairs[0].b;
-    if (teamsCache.length > 1) while (b.id === a.id) b = teamsCache[Math.floor(Math.random() * teamsCache.length)];
-    pickedPairs.push({ a, b });
-  }
-
-  for (const pair of pickedPairs) {
-    const { data: match, error } = await supabase.from("matches").insert({
-      name: `${pair.a.name} vs ${pair.b.name}`,
-      home_team_id: pair.a.id, away_team_id: pair.b.id,
-      start_time: start.toISOString(), lock_time: lock.toISOString(),
-      status: "scheduled", is_virtual: true, category_id: catId, virtual_round_batch_id: batchId,
-    } as any).select("id").single();
-    if (error) throw error;
-    const matchId = match.id;
+  const { data: match, error } = await supabase.from("matches").insert({
+    name: `${cfg.teamAName} vs ${cfg.teamBName}`,
+    home_team_id: cfg.teamAId, away_team_id: cfg.teamBId,
+    start_time: start.toISOString(), lock_time: lock.toISOString(),
+    status: "scheduled", is_virtual: true, category_id: catId,
+  }).select("id").single();
+  if (error) throw error;
+  const matchId = match.id;
 
   if (cfg.includeWinner) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "Match Winner" }).select("id").single();
     if (mk) await supabase.from("odds").insert([
-      { market_id: mk.id, label: pair.a.name, value: cfg.oddsA },
+      { market_id: mk.id, label: cfg.teamAName, value: cfg.oddsA },
       { market_id: mk.id, label: "Draw", value: cfg.oddsDraw },
-      { market_id: mk.id, label: pair.b.name, value: cfg.oddsB },
+      { market_id: mk.id, label: cfg.teamBName, value: cfg.oddsB },
     ]);
   }
   if (cfg.includeFirstBlood) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "First Blood" }).select("id").single();
     if (mk) await supabase.from("odds").insert([
-      { market_id: mk.id, label: pair.a.name, value: cfg.oddsFirstA },
-      { market_id: mk.id, label: pair.b.name, value: cfg.oddsFirstB },
+      { market_id: mk.id, label: cfg.teamAName, value: cfg.oddsFirstA },
+      { market_id: mk.id, label: cfg.teamBName, value: cfg.oddsFirstB },
     ]);
   }
   if (cfg.includeTotal) {
@@ -295,15 +283,14 @@ async function createRound(cfg: Cfg) {
     const { data: mk } = await supabase.from("markets").insert({ match_id: matchId, name: "Correct Score" }).select("id").single();
     if (mk) await supabase.from("odds").insert(DEFAULT_SCORES.map((s) => ({ market_id: mk.id, label: s, value: cfg.csOdds })));
   }
-    await supabase.from("audit_logs").insert({ action: "virtual_round_created", target_type: "match", target_id: matchId, metadata: { name: `${pair.a.name} vs ${pair.b.name}`, batch_id: batchId } });
-  }
+  await supabase.from("audit_logs").insert({ action: "virtual_round_created", target_type: "match", target_id: matchId, metadata: { name: `${cfg.teamAName} vs ${cfg.teamBName}` } });
 }
 
 function ComposerDialog({ teams, onClose, onSave }: { teams: TeamOpt[]; onClose: () => void; onSave: (c: Cfg) => Promise<void> }) {
   const [cfg, setCfg] = useState<Cfg>({
     teamAId: teams[0]?.id ?? "", teamBId: teams[1]?.id ?? "",
     teamAName: teams[0]?.name ?? "", teamBName: teams[1]?.name ?? "",
-    startInSec: 5, lockInSec: 35, matchCount: 4, teamPool: teams,
+    startInSec: 5, lockInSec: 35,
     oddsA: 1.95, oddsDraw: 3.5, oddsB: 1.95,
     oddsFirstA: 1.95, oddsFirstB: 1.95,
     totalLine: 4.5, oddsOver: 1.85, oddsUnder: 1.85,
@@ -338,7 +325,6 @@ function ComposerDialog({ teams, onClose, onSave }: { teams: TeamOpt[]; onClose:
             </div>
             <div><Label>Start in (sec)</Label><Input type="number" value={cfg.startInSec} onChange={(e) => upd("startInSec", +e.target.value)} /></div>
             <div><Label>Lock at (sec from now)</Label><Input type="number" value={cfg.lockInSec} onChange={(e) => upd("lockInSec", +e.target.value)} /></div>
-            <div><Label>Matches in round</Label><Input type="number" min={4} max={6} value={cfg.matchCount} onChange={(e) => upd("matchCount", +e.target.value)} /></div>
           </div>
 
           <MarketBlock label="Match Winner" enabled={cfg.includeWinner} onToggle={(v) => upd("includeWinner", v)}>
@@ -533,7 +519,7 @@ function PendingPayouts() {
   async function review(id: string, approve: boolean) {
     if (!approve && !reason) return toast.error("Add a decline reason");
     setBusy(id);
-    const { error } = await supabase.rpc("admin_review_virtual_payout" as any, { id: id, _approve: approve, _reason: approve ? null : reason });
+    const { error } = await supabase.rpc("admin_review_virtual_payout" as any, { _id: id, _approve: approve, _reason: approve ? null : reason });
     setBusy(null);
     if (error) return toast.error(error.message);
     toast.success(approve ? "Approved — user can claim" : "Declined — stake refunded");
@@ -598,7 +584,7 @@ function VirtualWalletPanel() {
     if (!amount || amount <= 0) return toast.error("Enter a positive amount");
     if (!reason.trim()) return toast.error("Reason is required");
     setBusy(true);
-    const { error } = await supabase.rpc("virtual_wallet_admin_adjust" as any, { amount: sign * amount, _reason: reason });
+    const { error } = await supabase.rpc("virtual_wallet_admin_adjust" as any, { _amount: sign * amount, _reason: reason });
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(sign > 0 ? "Wallet funded" : "Wallet debited");
@@ -607,7 +593,7 @@ function VirtualWalletPanel() {
 
   async function saveConcurrent() {
     setBusy(true);
-    const { error } = await supabase.from("app_settings").update({ virtual_concurrent_rounds: Math.max(4, Math.min(6, concurrent)) }).eq("id", 1);
+    const { error } = await supabase.from("app_settings").update({ virtual_concurrent_rounds: Math.max(1, concurrent) }).eq("id", 1);
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success("Concurrency saved");

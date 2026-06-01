@@ -15,10 +15,16 @@ import { Switch } from "@/components/ui/switch";
 import {
   Shield, Users, Trophy, Coins, Megaphone, Settings as SettingsIcon, Ticket, AlertTriangle,
   Calendar, Tag, Image as ImageIcon, BarChart3, History, Send, Plus, Trash2, Pencil, ChevronRight, ChevronLeft, Wallet, ListOrdered, Sparkles, ClipboardList, Lock, Pause, Play, Check, X, MessageSquare, Eye, RotateCw, Copy, Globe, MapPin, Smartphone, Clock, Filter,
-  Dice5, Menu, Activity as ActivityIcon, FileText, Zap, UserPlus,
+  Dice5, LogOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import lslLogo from "@/assets/lsl-logo.png";
+import tileVirtual from "@/assets/tile-virtual.jpg";
+import tileVip from "@/assets/tile-vip.jpg";
+import tileChallenges from "@/assets/tile-challenges.jpg";
+import tileReferrals from "@/assets/tile-referrals.jpg";
+import tileHousewallet from "@/assets/tile-housewallet.jpg";
+import { Countdown } from "@/components/Countdown";
 import { useAuth, ROLE_LABELS, type AppRole } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { fetchTeams } from "@/lib/queries";
@@ -28,55 +34,19 @@ import {
 } from "recharts";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { SpotlightsAdminPanel } from "@/components/Spotlight";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — LSL" }, { name: "description", content: "League administration dashboard." }] }),
   component: AdminPage,
 });
 
-const ADMIN_NAV: { tab: string; label: string; icon: any; mod?: boolean; alertKey?: string }[] = [
-  { tab: "analytics", label: "Analytics", icon: BarChart3, mod: true },
-  { tab: "activity", label: "Activity", icon: ActivityIcon },
-  { tab: "adminai", label: "Admin AI", icon: Sparkles },
-  { tab: "appeals", label: "Appeals", icon: AlertTriangle, mod: true, alertKey: "appeals" },
-  { tab: "audit", label: "Audit", icon: History },
-  { tab: "bettracker", label: "Bet Tracker", icon: ClipboardList, alertKey: "bettracker" },
-  { tab: "broadcast", label: "Broadcast", icon: Send },
-  { tab: "challenges", label: "Challenges", icon: Sparkles },
-  { tab: "chat", label: "Chat", icon: MessageSquare, mod: true, alertKey: "chat" },
-  { tab: "content", label: "Content", icon: Megaphone, mod: true },
-  { tab: "emblems", label: "Emblems", icon: Trophy },
-  { tab: "events", label: "Events", icon: Calendar },
-  { tab: "housewallet", label: "House Wallet", icon: Wallet },
-  { tab: "leaderboard", label: "Leaderboard", icon: ListOrdered },
-  { tab: "matches", label: "Matches", icon: Trophy, mod: true },
-  { tab: "notify", label: "Notify", icon: Send, mod: true },
-  { tab: "pnl", label: "P&L", icon: BarChart3 },
-  { tab: "promos", label: "Promo Codes", icon: Tag },
-  { tab: "promoreqs", label: "Promo Requests", icon: Tag, alertKey: "promoreqs" },
-  { tab: "referrals", label: "Referrals", icon: Users },
-  { tab: "reports", label: "Reports", icon: FileText },
-  { tab: "risk", label: "Risk", icon: AlertTriangle },
-  { tab: "seasons", label: "Seasons", icon: Trophy },
-  { tab: "settings", label: "Settings", icon: SettingsIcon },
-  { tab: "spotlights", label: "Spotlights", icon: Sparkles, mod: true },
-  { tab: "streakpush", label: "Streak & Push", icon: Sparkles },
-  { tab: "tasks", label: "Tasks & Achievements", icon: ClipboardList },
-  { tab: "tickets", label: "Tickets", icon: Ticket, mod: true, alertKey: "tickets" },
-  { tab: "tokens", label: "Tokens", icon: Coins, mod: true, alertKey: "tokens" },
-  { tab: "tokenrules", label: "Token Rules", icon: Coins },
-  { tab: "users", label: "Users", icon: Users, mod: true, alertKey: "users" },
-  { tab: "virtual", label: "Virtual", icon: Dice5 },
-  { tab: "vip", label: "VIP", icon: Trophy },
-  { tab: "withdrawals", label: "Withdrawals", icon: Wallet, mod: true, alertKey: "withdrawals" },
-];
-
 function AdminPage() {
   const { isAdmin, isMod, loading } = useAuth();
   const nav = useNavigate();
   const [alerts, setAlerts] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState(isAdmin ? "analytics" : "tickets");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   useEffect(() => { if (!loading && !isAdmin && !isMod) nav({ to: "/" }); }, [isAdmin, isMod, loading, nav]);
   useEffect(() => {
     if (!isAdmin) return;
@@ -108,424 +78,127 @@ function AdminPage() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [isAdmin]);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === "string") setActiveTab(detail);
+    };
+    window.addEventListener("admin:set-tab", handler);
+    return () => window.removeEventListener("admin:set-tab", handler);
+  }, []);
   if (loading) return <Layout><div className="container py-10">Loading…</div></Layout>;
   if (!isAdmin && !isMod) return null;
 
-  const navItems = ADMIN_NAV.filter((n) => isAdmin || n.mod);
-  const activeMeta = navItems.find((n) => n.tab === activeTab) ?? navItems[0];
-
-  const panels: Record<string, React.ReactNode> = {
-    analytics: <DashboardOverviewPanel alerts={alerts} onOpen={setActiveTab} />,
-    activity: <ActivityPanel />,
-    adminai: <AdminAILivePanel />,
-    appeals: <AppealsPanel />,
-    audit: <AuditPanel />,
-    bettracker: <BetTrackerPanel />,
-    broadcast: <BroadcastPanel />,
-    challenges: <ChallengesAdminPanel />,
-    chat: <ChatMonitorPanel />,
-    content: <ContentPanel />,
-    emblems: <EmblemModerationPanel />,
-    events: <EventsPanel />,
-    housewallet: <HouseWalletPanel />,
-    leaderboard: <LeaderboardAdminPanel />,
-    matches: <MatchesPanel />,
-    notify: <NotifyPanel />,
-    pnl: <PnLPanel />,
-    promos: <PromoPanel />,
-    promoreqs: <PromoRequestsPanel />,
-    referrals: <ReferralsAdminPanel />,
-    reports: <ReportsPanel />,
-    risk: <RiskPanel />,
-    seasons: <SeasonsAdminPanel />,
-    settings: <SettingsPanel />,
-    spotlights: <SpotlightsAdminPanel />,
-    streakpush: <StreakAndPushPanel />,
-    tasks: <TasksAchievementsPanel />,
-    tickets: <TicketsPanel />,
-    tokens: <TokensPanel />,
-    tokenrules: <TokenRulesPanel />,
-    users: <UsersPanel />,
-    virtual: <VirtualAdminPanel />,
-    vip: <VipAdminPanel />,
-    withdrawals: <WithdrawalsPanel />,
-  };
-
   return (
     <Layout>
-      <div className="container py-4 lg:py-6">
-        <div className="flex gap-4 items-start">
-          {/* Sidebar */}
-          <aside
-            className={`shrink-0 transition-all duration-300 ${
-              sidebarOpen ? "w-[230px]" : "w-[64px]"
-            } sticky top-4 self-start hidden md:block`}
-          >
-            <Card className="glass-strong overflow-hidden border-primary/30">
-              <div className="flex items-center gap-2 p-3 border-b border-primary/20">
-                <button
-                  onClick={() => setSidebarOpen((v) => !v)}
-                  className="h-8 w-8 grid place-items-center rounded-lg hover:bg-primary/10 text-primary shrink-0"
-                  aria-label="Toggle sidebar"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-                {sidebarOpen && (
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground">Navigation</div>
-                  </div>
-                )}
+      <main className="w-full min-h-[calc(100vh-3.5rem)]">
+        <div className={`mx-auto w-full ${activeTab === "analytics" ? "max-w-[1600px]" : "max-w-[1080px]"} px-3 sm:px-4 py-4 sm:py-6 space-y-4`}>
+          <div className="relative overflow-hidden rounded-2xl p-4 border border-primary/30 shadow-luxury bg-gradient-to-br from-card/90 via-card/70 to-primary/10 backdrop-blur-xl">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold" />
+            <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
+            <div className="relative flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setActiveTab("analytics")}
+                className="h-12 w-12 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40 shrink-0 hover:ring-primary/70 transition"
+                title="Open analytics"
+              >
+                <img src={lslLogo} alt="LSL" className="h-10 w-10 object-contain" />
+              </button>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
+                <h1 className="text-2xl sm:text-3xl font-bold gradient-gold-text">Admin Console</h1>
               </div>
-              <nav className="max-h-[calc(100vh-160px)] overflow-y-auto py-2">
-                {navItems.map((item) => {
-                  const count = item.alertKey ? alerts[item.alertKey] ?? 0 : 0;
-                  const active = item.tab === activeTab;
-                  return (
-                    <button
-                      key={item.tab}
-                      onClick={() => setActiveTab(item.tab)}
-                      title={item.label}
-                      className={`relative w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
-                        active
-                          ? "bg-primary/15 text-primary border-l-2 border-primary"
-                          : "text-muted-foreground hover:bg-primary/5 hover:text-foreground border-l-2 border-transparent"
-                      } ${sidebarOpen ? "" : "justify-center"}`}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
-                      {count > 0 && (
-                        <span className={`h-2 w-2 rounded-full bg-destructive shrink-0 ${sidebarOpen ? "" : "absolute top-1 right-1"}`} />
-                      )}
-                    </button>
-                  );
-                })}
-              </nav>
-            </Card>
-          </aside>
-
-          {/* Mobile nav: select */}
-          <div className="md:hidden w-full mb-4">
-            <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {navItems.map((n) => (
-                  <SelectItem key={n.tab} value={n.tab}>{n.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Badge variant="outline" className={`ml-auto ${isAdmin ? "border-accent/50 text-accent" : "border-primary/50 text-primary"}`}>
+                {isAdmin ? "Admin" : "Moderator"}
+              </Badge>
+              {isAdmin && (
+                <div className="flex items-center gap-1 w-full sm:w-auto sm:ml-2">
+                  <Button size="sm" variant="outline" className="text-[11px]" onClick={() => { if (typeof window !== "undefined") window.location.reload(); }} title="Reload this admin page">⟳ Reload</Button>
+                  <Button size="sm" variant="outline" className="text-[11px]" onClick={async () => {
+                    try {
+                      if ("serviceWorker" in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((r) => r.unregister())); }
+                      if (typeof caches !== "undefined") { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); }
+                    } catch {}
+                    if (typeof window !== "undefined") window.location.reload();
+                  }} title="Clear caches & service workers, then reload">⚡ Hard refresh</Button>
+                  <Button size="sm" variant="destructive" className="text-[11px]" onClick={async () => {
+                    const { error } = await (supabase as any).from("app_settings").update({ force_reload_at: new Date().toISOString() }).eq("id", 1);
+                    if (error) { (await import("sonner")).toast.error(error.message); return; }
+                    (await import("sonner")).toast.success("Reload broadcast sent to every active browser.");
+                  }} title="Force every logged-in browser to reload right now">📣 Broadcast reload</Button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Main content */}
-          <main className="flex-1 min-w-0 space-y-4">
-            {/* Command center header */}
-            <div className="relative overflow-hidden rounded-2xl p-4 border border-primary/30 shadow-luxury bg-gradient-to-br from-card/90 via-card/70 to-primary/10 backdrop-blur-xl">
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold" />
-              <div className="relative flex items-center gap-3 flex-wrap">
-                <button
-                  className="md:hidden h-9 w-9 grid place-items-center rounded-lg bg-primary/10 text-primary"
-                  onClick={() => setSidebarOpen((v) => !v)}
-                  aria-label="Menu"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-                <div className="h-11 w-11 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40">
-                  <img src={lslLogo} alt="LSL" className="h-9 w-9 object-contain" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
-                  <h1 className="text-2xl font-bold gradient-gold-text">Admin Console</h1>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Badge variant="outline" className="border-destructive/50 text-destructive text-[9px] h-4">Admin</Badge>
-                    <Badge variant="outline" className="border-primary/50 text-primary text-[9px] h-4">Moderator</Badge>
-                    <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-[9px] h-4">Sponsor</Badge>
-                  </div>
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-                    <RotateCw className="h-3 w-3 mr-1" />Reload
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
-                    <Zap className="h-3 w-3 mr-1" />Hard refresh
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setActiveTab("broadcast")}>
-                    <Send className="h-3 w-3 mr-1" />Broadcast reload
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Section label */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
-              <activeMeta.icon className="h-4 w-4 text-primary" />
-              <span className="font-bold text-foreground">{activeMeta.label}</span>
-            </div>
-
-            {panels[activeTab]}
-          </main>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
+            <TabsContent value="bannedusers" className="mt-4"><BannedUsersPanel /></TabsContent>
+            <TabsContent value="virtual" className="mt-4"><VirtualAdminPanel /></TabsContent>
+            <TabsContent value="matches" className="mt-4"><MatchesPanel /></TabsContent>
+            <TabsContent value="events" className="mt-4"><EventsPanel /></TabsContent>
+            <TabsContent value="tokens" className="mt-4"><TokensPanel /></TabsContent>
+            <TabsContent value="tokenmovement" className="mt-4"><TokenMovementPanel /></TabsContent>
+            <TabsContent value="wonbets" className="mt-4"><BetsByStatusPanel status="won" /></TabsContent>
+            <TabsContent value="lostbets" className="mt-4"><BetsByStatusPanel status="lost" /></TabsContent>
+            <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
+            <TabsContent value="housewallet" className="mt-4"><HouseWalletPanel /></TabsContent>
+            <TabsContent value="leaderboard" className="mt-4"><LeaderboardAdminPanel /></TabsContent>
+            <TabsContent value="promos" className="mt-4"><PromoPanel /></TabsContent>
+            <TabsContent value="content" className="mt-4"><ContentPanel /></TabsContent>
+            <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
+            <TabsContent value="tasks" className="mt-4"><TasksAchievementsPanel /></TabsContent>
+            <TabsContent value="challenges" className="mt-4"><ChallengesAdminPanel /></TabsContent>
+            <TabsContent value="seasons" className="mt-4"><SeasonsAdminPanel /></TabsContent>
+            <TabsContent value="bettracker" className="mt-4"><BetTrackerPanel /></TabsContent>
+            <TabsContent value="promoreqs" className="mt-4"><PromoRequestsPanel /></TabsContent>
+            <TabsContent value="appeals" className="mt-4"><AppealsPanel /></TabsContent>
+            <TabsContent value="chat" className="mt-4"><ChatMonitorPanel /></TabsContent>
+            <TabsContent value="notify" className="mt-4"><NotifyPanel /></TabsContent>
+            <TabsContent value="audit" className="mt-4"><AuditPanel /></TabsContent>
+            <TabsContent value="analytics" className="mt-4"><AnalyticsPanel /></TabsContent>
+            <TabsContent value="settings" className="mt-4"><SettingsPanel /></TabsContent>
+            <TabsContent value="adminai" className="mt-4"><AdminAILivePanel /></TabsContent>
+            <TabsContent value="risk" className="mt-4"><RiskPanel /></TabsContent>
+            <TabsContent value="pnl" className="mt-4"><PnLPanel /></TabsContent>
+            <TabsContent value="reports" className="mt-4"><ReportsPanel /></TabsContent>
+            <TabsContent value="tokenrules" className="mt-4"><TokenRulesPanel /></TabsContent>
+            <TabsContent value="broadcast" className="mt-4"><BroadcastPanel /></TabsContent>
+            <TabsContent value="activity" className="mt-4"><ActivityPanel /></TabsContent>
+            <TabsContent value="streakpush" className="mt-4"><StreakAndPushPanel /></TabsContent>
+            <TabsContent value="referrals" className="mt-4"><ReferralsAdminPanel /></TabsContent>
+            <TabsContent value="emblems" className="mt-4"><EmblemModerationPanel /></TabsContent>
+            <TabsContent value="vip" className="mt-4"><VipAdminPanel /></TabsContent>
+            <TabsContent value="spotlights" className="mt-4"><SpotlightsAdminPanel /></TabsContent>
+          </Tabs>
         </div>
-      </div>
+      </main>
     </Layout>
   );
 }
 
-/* ============================ DASHBOARD OVERVIEW ============================ */
-function DashboardOverviewPanel({ alerts, onOpen }: { alerts: Record<string, number>; onOpen: (tab: string) => void }) {
-  const [s, setS] = useState<any>(null);
-  const [series, setSeries] = useState<any[]>([]);
-  const [recent, setRecent] = useState<any[]>([]);
-  const [liveMatches, setLiveMatches] = useState<any[]>([]);
-  useEffect(() => {
-    (async () => {
-      const [u, b, t, openMatches, ticketsBooked, tokenReqs, wd, promoReqs, appeals, reports, audit, live] = await Promise.all([
-        supabase.from("profiles").select("created_at, token_balance, is_banned"),
-        supabase.from("bets").select("status, stake, potential_payout, created_at"),
-        supabase.from("token_transactions").select("amount, kind, created_at"),
-        supabase.from("matches").select("id", { count: "exact", head: true }).neq("status", "ended"),
-        supabase.from("bets").select("id", { count: "exact", head: true }),
-        supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
-        supabase.from("audit_logs").select("action,target_type,created_at,actor_id").order("created_at", { ascending: false }).limit(8),
-        supabase.from("matches").select("id,name,home_score,away_score,status,is_virtual").eq("status", "live").eq("is_virtual", false).limit(6),
-      ]);
-      const users = u.data ?? [];
-      const bets = b.data ?? [];
-      const txs = t.data ?? [];
-      const totalStaked = bets.reduce((a, x: any) => a + (x.stake ?? 0), 0);
-      const totalPaid = bets.filter((x: any) => x.status === "won").reduce((a, x: any) => a + (x.potential_payout ?? 0), 0);
-      setS({
-        totalUsers: users.length,
-        bannedUsers: users.filter((x: any) => x.is_banned).length,
-        circulating: users.reduce((a, x: any) => a + (x.token_balance ?? 0), 0),
-        totalBets: bets.length,
-        wonBets: bets.filter((x: any) => x.status === "won").length,
-        lostBets: bets.filter((x: any) => x.status === "lost").length,
-        openBets: bets.filter((x: any) => x.status === "pending" || x.status === "open").length,
-        totalStaked, totalPaid, houseEdge: totalStaked - totalPaid,
-        debits: txs.filter((x: any) => x.amount < 0).reduce((a, x: any) => a + Math.abs(x.amount), 0),
-        credits: txs.filter((x: any) => x.amount > 0).reduce((a, x: any) => a + x.amount, 0),
-        openMatches: openMatches.count ?? 0,
-        ticketsBooked: ticketsBooked.count ?? 0,
-        tokenReqs: tokenReqs.count ?? 0,
-        wd: wd.count ?? 0,
-        promoReqs: promoReqs.count ?? 0,
-        appeals: appeals.count ?? 0,
-        reports: reports.count ?? 0,
-      });
-      // 14d series
-      const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
-      const today = new Date(); today.setHours(0,0,0,0);
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date(today); d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(5, 10);
-        days[d.toISOString().slice(0,10)] = { day: key, bets: 0, staked: 0, users: 0 };
-      }
-      bets.forEach((x: any) => {
-        const k = (x.created_at ?? "").slice(0, 10);
-        if (days[k]) { days[k].bets += 1; days[k].staked += Number(x.stake ?? 0); }
-      });
-      users.forEach((x: any) => {
-        const k = (x.created_at ?? "").slice(0, 10);
-        if (days[k]) days[k].users += 1;
-      });
-      setSeries(Object.values(days));
-      setRecent(audit.data ?? []);
-      setLiveMatches(live.data ?? []);
-    })();
-  }, []);
-
-  if (!s) return <div className="text-sm text-muted-foreground">Loading dashboard…</div>;
-
-  const topRow = [
-    { icon: Users, label: "USERS", sub: "TOTAL USERS", value: s.totalUsers },
-    { icon: Trophy, label: "OPEN MATCHES", sub: "LIVE & UPCOMING", value: s.openMatches },
-    { icon: AlertTriangle, label: "PENDING REQUESTS", sub: "AWAITING ACTION", value: (s.tokenReqs + s.wd + s.promoReqs + s.appeals) },
-    { icon: Coins, label: "TOKENS IN CIRCULATION", sub: "TOTAL SUPPLY", value: s.circulating.toLocaleString() },
-    { icon: AlertTriangle, label: "OPEN REPORTS", sub: "REPORTED ITEMS", value: s.reports },
-  ];
-  const midRow = [
-    { icon: Ticket, label: "BOOKED TICKETS", sub: "TOTAL BOOKED", value: s.ticketsBooked },
-    { icon: Coins, label: "TOKEN REQUESTS", sub: "REQUESTED TOKENS", value: s.tokenReqs },
-    { icon: Wallet, label: "WITHDRAWALS", sub: "PENDING PAYOUTS", value: s.wd },
-    { icon: Tag, label: "PROMO REQUESTS", sub: "PENDING PROMOS", value: s.promoReqs },
-    { icon: AlertTriangle, label: "BAN APPEALS", sub: "PENDING APPEALS", value: s.appeals },
-  ];
-
-  const StatTile = ({ icon: Icon, label, sub, value }: any) => (
-    <Card className="glass p-3 relative overflow-hidden border-primary/20">
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-gold" />
-      <Icon className="h-4 w-4 text-primary mb-2" />
-      <div className="text-2xl font-black gradient-gold-text leading-tight">{value}</div>
-      <div className="text-[9px] uppercase tracking-[0.18em] text-primary/80 mt-1 font-bold">{label}</div>
-      <div className="text-[8px] uppercase tracking-[0.18em] text-muted-foreground">{sub}</div>
-    </Card>
-  );
-
-  return (
-    <div className="space-y-4">
-      {/* Top stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        {topRow.map((x) => <StatTile key={x.label} {...x} />)}
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        {midRow.map((x) => <StatTile key={x.label} {...x} />)}
-      </div>
-
-      {/* Charts */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card className="glass p-4">
-          <div className="flex items-baseline justify-between mb-3">
-            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Volume over time</div>
-            <div className="text-[10px] text-muted-foreground">Last 14 days</div>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="dStake" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.55} />
-                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={9} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={9} />
-              <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
-              <Area type="monotone" dataKey="staked" stroke="var(--primary)" fill="url(#dStake)" name="Staked" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card className="glass p-4">
-          <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">New users per day</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={series}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={9} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={9} />
-              <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
-              <Bar dataKey="users" fill="var(--primary)" radius={[6,6,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Bottom stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        <StatTile icon={Users} label="TOTAL USERS" sub="" value={s.totalUsers} />
-        <StatTile icon={X} label="BANNED USERS" sub="" value={s.bannedUsers} />
-        <StatTile icon={Coins} label="TOKENS CIRCULATING" sub="" value={s.circulating.toLocaleString()} />
-        <StatTile icon={Ticket} label="TOTAL BETS" sub="" value={s.totalBets} />
-        <StatTile icon={Check} label="WON BETS" sub="" value={s.wonBets} />
-        <StatTile icon={X} label="LOST BETS" sub="" value={s.lostBets} />
-        <StatTile icon={ClipboardList} label="OPEN BETS" sub="" value={s.openBets} />
-        <StatTile icon={Coins} label="TOTAL STAKED" sub="" value={s.totalStaked.toLocaleString()} />
-        <StatTile icon={Wallet} label="TOTAL PAID OUT" sub="" value={s.totalPaid.toLocaleString()} />
-        <StatTile icon={BarChart3} label="NET (HOUSE)" sub="" value={s.houseEdge.toLocaleString()} />
-      </div>
-
-      {/* Recent activity + Live matches + Quick actions */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="glass p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Recent Activity</div>
-            <button onClick={() => onOpen("audit")} className="text-[10px] text-primary hover:underline">View all</button>
-          </div>
-          <ul className="space-y-2 text-xs">
-            {recent.length === 0 && <li className="text-muted-foreground">No recent activity.</li>}
-            {recent.map((r, i) => (
-              <li key={i} className="flex items-start gap-2 border-b border-border/40 pb-2 last:border-0">
-                <span className="h-6 w-6 grid place-items-center rounded-md bg-primary/15 text-primary shrink-0"><ActivityIcon className="h-3 w-3" /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold truncate">{r.action}</div>
-                  <div className="text-[10px] text-muted-foreground">{r.target_type} · {new Date(r.created_at).toLocaleString()}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card className="glass p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text">Live Matches</div>
-            <button onClick={() => onOpen("matches")} className="text-[10px] text-primary hover:underline">View all</button>
-          </div>
-          <ul className="space-y-2 text-xs">
-            {liveMatches.length === 0 && <li className="text-muted-foreground">No live matches right now.</li>}
-            {liveMatches.map((m) => (
-              <li key={m.id} className="flex items-center gap-2 border-b border-border/40 pb-2 last:border-0">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <div className="font-bold truncate flex-1">{m.name}</div>
-                <span className="font-mono text-primary">{m.home_score}–{m.away_score}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card className="glass p-4">
-          <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">Quick Actions</div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { icon: UserPlus, label: "Users", tab: "users" },
-              { icon: Trophy, label: "Matches", tab: "matches" },
-              { icon: Send, label: "Broadcast", tab: "broadcast" },
-              { icon: Tag, label: "Promos", tab: "promos" },
-              { icon: Wallet, label: "House", tab: "housewallet" },
-              { icon: FileText, label: "Reports", tab: "reports" },
-              { icon: ClipboardList, label: "Bets", tab: "bettracker" },
-              { icon: SettingsIcon, label: "Settings", tab: "settings" },
-              { icon: LifeBuoyShim, label: "Tickets", tab: "tickets" },
-            ].map((q) => (
-              <button
-                key={q.label}
-                onClick={() => onOpen(q.tab)}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-primary/20 bg-card/50 hover:bg-primary/10 hover:border-primary/40 transition"
-              >
-                <q.icon className="h-4 w-4 text-primary" />
-                <span className="text-[10px] font-bold">{q.label}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* System status */}
-      <Card className="glass p-4">
-        <div className="text-sm font-bold uppercase tracking-wider gradient-gold-text mb-3">System Status</div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-          {["Platform", "Database", "Payments", "Broadcast", "AI Engine"].map((s) => (
-            <div key={s} className="flex items-center justify-between px-3 py-2 rounded-lg bg-card/50 border border-border/40">
-              <span className="text-muted-foreground">{s}</span>
-              <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />ONLINE
-              </span>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// shim to avoid extra import; Ticket icon already imported
-const LifeBuoyShim = Ticket;
-
 async function logAudit(action: string, target_type: string, target_id?: string, metadata?: any) {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) return;
-  // Best-effort enrichment: where (route, user agent), and target user resolution
   const enriched: any = {
     ...(metadata ?? {}),
-    actor_email: u.email ?? null,
     user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
     route: typeof window !== "undefined" ? window.location.pathname + window.location.search : null,
     origin: typeof window !== "undefined" ? window.location.origin : null,
     locale: typeof navigator !== "undefined" ? navigator.language : null,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    timestamp_iso: new Date().toISOString(),
+    source: "admin_panel",
   };
   if (target_type === "user" && target_id) enriched.target_user_id = target_id;
-  await supabase.from("audit_logs").insert({ actor_id: u.id, action, target_type, target_id, metadata: enriched });
+  const { error } = await (supabase as any).rpc("admin_log_action", {
+    _action: action,
+    _target_type: target_type,
+    _target_id: target_id ?? null,
+    _metadata: enriched,
+  });
+  if (error) console.warn("audit log failed", error.message);
 }
 
 function AdminTab({ icon: Icon, label, count = 0 }: { icon: any; label: string; count?: number }) {
@@ -872,7 +545,6 @@ function UsersPanel() {
 
 function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; onClose: () => void }) {
   const { isAdmin } = useAuth();
-  const confirm = useConfirm();
   const [tab, setTab] = useState("profile");
   const [form, setForm] = useState({ ...user });
   const [tokenDelta, setTokenDelta] = useState(0);
@@ -887,21 +559,31 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
 
   useEffect(() => {
     (async () => {
-      const [bRes, tRes, aRes, wRes, rRes] = await Promise.all([
+      const [bRes, tRes, aRes, aByRes, aMetaRes, wRes, rRes] = await Promise.all([
         supabase.from("bets").select("*, bet_selections(id, selection_label, locked_odds, result, matches!match_id(name, status, home_score, away_score), markets!market_id(name))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(40),
-        supabase.from("token_transactions").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(60),
-        supabase.from("audit_logs").select("*").eq("target_type", "user").eq("target_id", user.id).order("created_at", { ascending: false }).limit(60),
+        supabase.from("token_transactions").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(80),
+        supabase.from("audit_logs").select("*").eq("target_type", "user").eq("target_id", user.id).order("created_at", { ascending: false }).limit(80),
+        supabase.from("audit_logs").select("*").eq("actor_id", user.id).order("created_at", { ascending: false }).limit(40),
+        supabase.from("audit_logs").select("*").contains("metadata", { target_user_id: user.id } as any).order("created_at", { ascending: false }).limit(60),
         supabase.from("withdrawal_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
         supabase.from("promo_redemptions").select("*, promo_codes:promo_id(code)").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
       ]);
+      // Merge audit log sources and de-duplicate by id, newest first
+      const auditMap = new Map<string, any>();
+      for (const row of [...(aRes.data ?? []), ...(aByRes.data ?? []), ...(aMetaRes.data ?? [])]) {
+        if (row?.id) auditMap.set(row.id, row);
+      }
+      const mergedAudits = Array.from(auditMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
       setBets(bRes.data ?? []);
       setTx(tRes.data ?? []);
-      setAudits(aRes.data ?? []);
+      setAudits(mergedAudits);
       setWithdrawals(wRes.data ?? []);
       setRedemptions(rRes.data ?? []);
 
       const actorIds = Array.from(new Set([
-        ...(aRes.data ?? []).map((a: any) => a.actor_id).filter(Boolean),
+        ...mergedAudits.map((a: any) => a.actor_id).filter(Boolean),
         ...(wRes.data ?? []).map((w: any) => w.reviewed_by).filter(Boolean),
       ]));
       if (actorIds.length) {
@@ -934,6 +616,15 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
     });
     toast.success("Applied"); setTokenDelta(0); setTokenReason("");
   }
+  async function kickUser() {
+    if (!isAdmin) return;
+    if (!actionReason.trim()) { toast.error("Reason is required to kick a user."); return; }
+    const { error } = await (supabase as any).rpc("admin_kick_user", { _user_id: user.id, _reason: actionReason.trim() });
+    if (error) { toast.error(error.message); return; }
+    toast.success("User kicked — their active browser will sign out.");
+    setActionReason("");
+    onClose();
+  }
   async function flagAction(field: "is_banned" | "is_muted" | "is_restricted", val: boolean, reasonField: string) {
     if (val && !actionReason) { toast.error("Reason is required"); return; }
     const patch: any = { [field]: val, [reasonField]: val ? actionReason : null };
@@ -944,20 +635,6 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
       await logAudit(val ? `apply_${field}` : `lift_${field}`, "user", user.id, { reason: actionReason });
       toast.success("Updated"); setActionReason(""); onClose();
     }
-  }
-  async function kickUser() {
-    const ok = await confirm({
-      title: "Kick user out now?",
-      description: `${user.full_name || user.email} will be signed out and must log in again to continue.`,
-      tone: "danger",
-      confirmText: "Kick user",
-      inputLabel: "Reason",
-      inputPlaceholder: "Why are you kicking this user?",
-    });
-    if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_kick_user" as any, { _user_id: user.id, _reason: ok.value || "Admin forced session refresh" });
-    if (error) toast.error(error.message);
-    else { toast.success("User kicked out"); onClose(); }
   }
   async function addRole(role: AppRole) {
     const { error } = await supabase.from("user_roles").insert({ user_id: user.id, role });
@@ -1106,7 +783,7 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                 </Button>
                 {isAdmin && (
                   <Button variant="destructive" className="h-11 justify-start" onClick={kickUser}>
-                    <X className="h-4 w-4 mr-2" />Kick user out now
+                    <LogOut className="h-4 w-4 mr-2" />Kick user session
                   </Button>
                 )}
               </div>
@@ -1494,7 +1171,7 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
     if (!bet) continue;
     if (["suspended", "refunded", "void", "cashed_out"].includes(bet.status)) continue;
     if (allWon) {
-      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { bet_id: bid });
+      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { _bet_id: bid });
       if (payErr) {
         toast.error(`Could not credit winnings for ${bet.tracking_id}: ${payErr.message}`);
       }
@@ -2438,7 +2115,7 @@ function AuditPanel() {
   const [actionFilter, setActionFilter] = useState<string>("all");
 
   useEffect(() => {
-    supabase.from("audit_logs").select("*").not("action", "like", "virtual_%").order("created_at", { ascending: false }).limit(500).then(async ({ data }) => {
+    supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500).then(async ({ data }) => {
       setLogs(data ?? []);
       const ids = new Set<string>();
       (data ?? []).forEach((x: any) => {
@@ -2627,15 +2304,31 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 /* ============================ ANALYTICS ============================ */
 function AnalyticsPanel() {
+  const nav = useNavigate();
   const [stats, setStats] = useState<any>(null);
   const [series, setSeries] = useState<any[]>([]);
+  const [counts, setCounts] = useState<any>({});
+  const [activity, setActivity] = useState<any[]>([]);
+  const [liveMatches, setLiveMatches] = useState<any[]>([]);
+  const [broadcasts, setBroadcasts] = useState<any[]>([]);
+  const [event, setEvent] = useState<any>(null);
+  const [highlights, setHighlights] = useState<any[]>([]);
+
   useEffect(() => {
     (async () => {
-      const [u, b, t, r] = await Promise.all([
+      const [u, b, t, r, m, tr, wr, pr, ap, ti, br, ev] = await Promise.all([
         supabase.from("profiles").select("created_at, token_balance, is_banned"),
         supabase.from("bets").select("status, stake, potential_payout, created_at"),
         supabase.from("token_transactions").select("amount, kind, created_at"),
         supabase.from("token_requests").select("status, amount"),
+        supabase.from("matches").select("id,name,status,created_at").in("status", ["live", "scheduled"]).limit(5),
+        supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
+        supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
+        supabase.from("events").select("*").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
@@ -2656,7 +2349,20 @@ function AnalyticsPanel() {
         debits: txs.filter((x: any) => x.amount < 0).reduce((a, x: any) => a + Math.abs(x.amount), 0),
         credits: txs.filter((x: any) => x.amount > 0).reduce((a, x: any) => a + x.amount, 0),
       });
-      // Build last 14 day series
+      setCounts({
+        gangWars: m.data?.length ?? 0,
+        pendingTokens: tr.count ?? 0,
+        pendingWithdrawals: wr.count ?? 0,
+        pendingPromos: pr.count ?? 0,
+        pendingAppeals: ap.count ?? 0,
+        openTickets: ti.count ?? 0,
+        bookedTickets: bets.length,
+        pendingTotal: (tr.count ?? 0) + (wr.count ?? 0) + (pr.count ?? 0),
+      });
+      setLiveMatches(m.data ?? []);
+      setBroadcasts(br.data ?? []);
+      setEvent(ev.data ?? null);
+
       const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
       const today = new Date(); today.setHours(0,0,0,0);
       for (let i = 13; i >= 0; i--) {
@@ -2673,70 +2379,327 @@ function AnalyticsPanel() {
         if (days[k]) days[k].users += 1;
       });
       setSeries(Object.values(days));
+
+      const { data: aud } = await supabase.from("audit_logs").select("action,target_type,created_at,metadata").order("created_at", { ascending: false }).limit(6);
+      setActivity(aud ?? []);
+      const { data: hl } = await supabase.from("highlights").select("id,title,media_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
+      setHighlights(hl ?? []);
     })();
   }, []);
-  if (!stats) return <div>Loading…</div>;
-  const items = [
-    { label: "Total users", value: stats.totalUsers },
-    { label: "Banned users", value: stats.bannedUsers },
-    { label: "Tokens circulating", value: stats.circulating.toLocaleString() },
-    { label: "Total bets", value: stats.totalBets },
-    { label: "Won bets", value: stats.wonBets },
-    { label: "Lost bets", value: stats.lostBets },
-    { label: "Open bets", value: stats.openBets },
-    { label: "Total staked", value: stats.totalStaked.toLocaleString() },
-    { label: "Total paid out", value: stats.totalPaid.toLocaleString() },
-    { label: "Net (house)", value: stats.houseEdge.toLocaleString() },
-    { label: "Tokens approved", value: stats.approvedRequests.toLocaleString() },
-    { label: "Token credits", value: stats.credits.toLocaleString() },
-    { label: "Token debits", value: stats.debits.toLocaleString() },
+
+  if (!stats) return <div className="text-sm text-muted-foreground">Loading analytics…</div>;
+
+  const fmt = (n: number) => n.toLocaleString();
+  const short = (n: number) => {
+    const a = Math.abs(n);
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    return String(n);
+  };
+
+  const goTab = (t: string) => setActiveTabFromAnalytics(nav, t);
+  const row1 = [
+    { icon: Users, value: stats.totalUsers, title: "USERS", sub: "TOTAL USERS", tone: "gold", onClick: () => goTab("users") },
+    { icon: Trophy, value: counts.gangWars ?? 0, title: "GANG WARS", sub: "LIVE & UPCOMING", tone: "gold", onClick: () => goTab("matches") },
+    { icon: AlertTriangle, value: counts.pendingTotal ?? 0, title: "PENDING REQUESTS", sub: "AWAITING ACTION", tone: "amber", onClick: () => goTab("tokens") },
+    { icon: Coins, value: short(stats.circulating), title: "TOTAL VOLUME", sub: "IN CIRCULATION", tone: "gold-lg" },
+    { icon: Calendar, value: counts.openTickets ?? 0, title: "OPEN REPORTS", sub: "REPORTED ITEMS", tone: "gold", onClick: () => goTab("tickets") },
   ];
+  const row2 = [
+    { icon: Ticket, value: counts.bookedTickets ?? 0, title: "TICKETS BOOKED", sub: "TOTAL BOOKED", onClick: () => goTab("bettracker") },
+    { icon: Coins, value: counts.pendingTokens ?? 0, title: "TOKEN REQUESTS", sub: "REQUESTED TOKENS", onClick: () => goTab("tokens") },
+    { icon: Wallet, value: counts.pendingWithdrawals ?? 0, title: "WITHDRAWALS", sub: "PENDING PAYOUTS", onClick: () => goTab("withdrawals") },
+    { icon: Tag, value: counts.pendingPromos ?? 0, title: "PROMO REQUESTS", sub: "PENDING PROMOS", onClick: () => goTab("promoreqs") },
+    { icon: AlertTriangle, value: counts.pendingAppeals ?? 0, title: "BAN APPEALS", sub: "PENDING APPEALS", onClick: () => goTab("appeals") },
+  ];
+  const row4 = [
+    { icon: Users, value: stats.totalUsers, title: "TOTAL USERS", onClick: () => goTab("users") },
+    { icon: Shield, value: stats.bannedUsers, title: "BANNED USERS", onClick: () => goTab("bannedusers") },
+    { icon: Coins, value: short(stats.circulating), title: "TOKENS CIRCULATING", onClick: () => goTab("pnl") },
+    { icon: Ticket, value: stats.totalBets, title: "TOTAL BETS", onClick: () => goTab("bettracker") },
+    { icon: Trophy, value: stats.wonBets, title: "WON BETS", onClick: () => goTab("wonbets") },
+  ];
+  const row5 = [
+    { icon: X, value: stats.lostBets, title: "LOST BETS", onClick: () => goTab("lostbets") },
+    { icon: Eye, value: stats.openBets, title: "OPEN BETS", onClick: () => goTab("bettracker") },
+    { icon: Coins, value: short(stats.totalStaked), title: "TOTAL STAKED", onClick: () => goTab("pnl") },
+    { icon: Wallet, value: short(stats.totalPaid), title: "TOTAL PAID OUT", onClick: () => goTab("pnl") },
+    { icon: BarChart3, value: short(stats.houseEdge), title: "NET (HOUSE)", onClick: () => goTab("pnl") },
+  ];
+  const row6 = [
+    { icon: Check, value: short(stats.approvedRequests), title: "TOKENS APPROVED", onClick: () => goTab("tokens") },
+    { icon: Coins, value: short(stats.credits), title: "TOKEN CREDITS", onClick: () => goTab("tokenmovement") },
+    { icon: Coins, value: short(stats.debits), title: "TOKEN DEBITS", onClick: () => goTab("tokenmovement") },
+  ];
+
+  const ts = (ts: string) => {
+    const diff = (Date.now() - +new Date(ts)) / 1000;
+    if (diff < 60) return `${Math.floor(diff)}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {items.map((x) => (
-          <Card key={x.label} className="glass p-4">
-            <div className="text-2xl font-bold gradient-gold-text">{x.value}</div>
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{x.label}</div>
+    <div className="space-y-3">
+      {/* ROW 1 — 5 metric squares */}
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {row1.map((x) => <MetricSquare key={x.title} {...x} />)}
+      </div>
+
+      {/* ROW 2 — 5 metric squares */}
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {row2.map((x) => <MetricSquare key={x.title} {...x} />)}
+      </div>
+
+      {/* ROW 3 — 2 charts side-by-side */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <Card className="glass p-2 sm:p-4 border-primary/20 bg-card/60">
+          <div className="text-[9px] sm:text-xs font-bold tracking-widest text-primary mb-1">VOLUME OVER TIME <span className="text-muted-foreground font-normal">(LAST 14 DAYS)</span></div>
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={series} margin={{ top: 5, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gStake" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(45 96% 56%)" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="hsl(45 96% 56%)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(45 30% 20%)" />
+              <XAxis dataKey="day" stroke="hsl(45 50% 60%)" fontSize={8} />
+              <YAxis stroke="hsl(45 50% 60%)" fontSize={8} tickFormatter={short} />
+              <RTooltip contentStyle={{ background: "hsl(45 20% 8%)", border: "1px solid hsl(45 60% 40%)", borderRadius: 8, fontSize: 11 }} />
+              <Area type="monotone" dataKey="staked" stroke="hsl(45 96% 56%)" fill="url(#gStake)" strokeWidth={2} dot={{ r: 2, fill: "hsl(45 96% 56%)" }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card className="glass p-2 sm:p-4 border-primary/20 bg-card/60">
+          <div className="text-[9px] sm:text-xs font-bold tracking-widest text-primary mb-1">NEW USERS PER DAY</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={series} margin={{ top: 5, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(45 30% 20%)" />
+              <XAxis dataKey="day" stroke="hsl(45 50% 60%)" fontSize={8} />
+              <YAxis stroke="hsl(45 50% 60%)" fontSize={8} />
+              <RTooltip contentStyle={{ background: "hsl(45 20% 8%)", border: "1px solid hsl(45 60% 40%)", borderRadius: 8, fontSize: 11 }} />
+              <Bar dataKey="users" fill="hsl(45 96% 56%)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      {/* ROW 4 — 5 metric squares */}
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {row4.map((x) => <MetricSquare key={x.title} {...x} compact />)}
+      </div>
+
+      {/* ROW 5 — 5 metric squares */}
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {row5.map((x) => <MetricSquare key={x.title} {...x} compact />)}
+      </div>
+
+      {/* ROW 6 — 3 wider squares + image cell */}
+      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+        {row6.map((x) => <MetricSquare key={x.title} {...x} compact />)}
+        <Card className="overflow-hidden border-primary/20 bg-card/60 relative min-h-[80px]">
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(45_30%_15%),hsl(0_50%_15%))] opacity-80" />
+          <div className="absolute inset-0 grid place-items-center text-[10px] uppercase tracking-widest text-primary/80 font-bold">League</div>
+        </Card>
+      </div>
+
+      {/* ROW 7 — Recent Activity | Live Gang Wars | Highlights Hub */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <PanelBlock title="RECENT ACTIVITY" onView={() => setActiveTabFromAnalytics(nav, "activity")}>
+          {activity.length === 0 && <div className="text-[10px] text-muted-foreground">No activity yet</div>}
+          {activity.map((a, i) => (
+            <button key={i} onClick={() => setActiveTabFromAnalytics(nav, "audit")} className="w-full text-left flex items-start gap-1.5 text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded transition">
+              <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <div className="text-foreground truncate">{a.action?.replace(/_/g, " ")}</div>
+                <div className="text-muted-foreground text-[8px] sm:text-[10px]">{ts(a.created_at)}</div>
+              </div>
+            </button>
+          ))}
+        </PanelBlock>
+        <PanelBlock title="LIVE GANG WARS" onView={() => nav({ to: "/matches" })}>
+          {liveMatches.length === 0 && <div className="text-[10px] text-muted-foreground">No live wars</div>}
+          {liveMatches.map((m) => (
+            <button key={m.id} onClick={() => nav({ to: "/matches/$matchId", params: { matchId: m.id } })} className="w-full flex items-center justify-between text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
+              <span className="truncate text-foreground text-left">{m.name}</span>
+              <Badge variant="outline" className="text-[8px] border-primary/40 text-primary px-1 py-0">{m.status}</Badge>
+            </button>
+          ))}
+        </PanelBlock>
+        <PanelBlock title="HIGHLIGHTS HUB" onView={() => setActiveTabFromAnalytics(nav, "content")}>
+          {highlights.length === 0 && <div className="text-[10px] text-muted-foreground">No highlights yet</div>}
+          {highlights.map((h) => (
+            <button key={h.id} onClick={() => setActiveTabFromAnalytics(nav, "content")} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
+              {h.media_type === "video" ? <Play className="h-3 w-3 text-primary shrink-0" /> : <ImageIcon className="h-3 w-3 text-primary shrink-0" />}
+              <div className="min-w-0 flex-1 truncate text-left">{h.title}</div>
+            </button>
+          ))}
+        </PanelBlock>
+      </div>
+
+      {/* ROW 8 — Event Countdown | Broadcast Center | Quick Actions */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <PanelBlock title="EVENT COUNTDOWN" onView={() => setActiveTabFromAnalytics(nav, "events")}>
+          {event ? (
+            <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-primary/5 rounded p-1 transition space-y-1">
+              <div className="text-[9px] sm:text-xs font-bold text-primary truncate">{event.title}</div>
+              <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at ?? event.starts_at} /></div>
+              <div className="text-[7px] sm:text-[9px] text-muted-foreground">{new Date(event.starts_at ?? event.ends_at).toLocaleString()}</div>
+            </button>
+          ) : (
+            <div className="text-[10px] text-muted-foreground">No active event</div>
+          )}
+        </PanelBlock>
+        <PanelBlock title="BROADCAST CENTER" onView={() => setActiveTabFromAnalytics(nav, "broadcast")}>
+          {broadcasts.length === 0 && <div className="text-[10px] text-muted-foreground">No broadcasts</div>}
+          {broadcasts.map((b) => (
+            <button key={b.id} onClick={() => setActiveTabFromAnalytics(nav, "broadcast")} className="w-full text-left text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
+              <div className="flex items-center gap-1"><Megaphone className="h-2.5 w-2.5 text-primary shrink-0" /><div className="truncate text-foreground font-semibold">{b.title || "Broadcast"}</div></div>
+              {b.body && <div className="text-[8px] sm:text-[10px] text-muted-foreground truncate pl-3.5">{b.body}</div>}
+              <div className="text-[7px] sm:text-[9px] text-muted-foreground pl-3.5">{ts(b.created_at)}</div>
+            </button>
+          ))}
+        </PanelBlock>
+        <PanelBlock title="QUICK ACTIONS">
+          <div className="max-h-[260px] sm:max-h-[320px] overflow-y-auto pr-1 -mr-1">
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { i: BarChart3, l: "Analytics", t: "analytics" },
+                { i: Users, l: "Users", t: "users" },
+                { i: Shield, l: "Banned", t: "bannedusers" },
+                { i: Sparkles, l: "Admin AI", t: "adminai" },
+                { i: AlertTriangle, l: "Appeals", t: "appeals" },
+                { i: History, l: "Audit", t: "audit" },
+                { i: ClipboardList, l: "Bet Tracker", t: "bettracker" },
+                { i: Send, l: "Broadcast", t: "broadcast" },
+                { i: Sparkles, l: "Challenges", t: "challenges" },
+                { i: MessageSquare, l: "Chat", t: "chat" },
+                { i: Megaphone, l: "Content", t: "content" },
+                { i: Trophy, l: "Emblems", t: "emblems" },
+                { i: Calendar, l: "Events", t: "events" },
+                { i: Wallet, l: "House Wallet", t: "housewallet" },
+                { i: ListOrdered, l: "Leaderboard", t: "leaderboard" },
+                { i: Trophy, l: "Matches", t: "matches" },
+                { i: Send, l: "Notify", t: "notify" },
+                { i: BarChart3, l: "P&L", t: "pnl" },
+                { i: Tag, l: "Promo Codes", t: "promos" },
+                { i: Tag, l: "Promo Reqs", t: "promoreqs" },
+                { i: Users, l: "Referrals", t: "referrals" },
+                { i: BarChart3, l: "Reports", t: "reports" },
+                { i: AlertTriangle, l: "Risk", t: "risk" },
+                { i: Trophy, l: "Seasons", t: "seasons" },
+                { i: SettingsIcon, l: "Settings", t: "settings" },
+                { i: Sparkles, l: "Spotlights", t: "spotlights" },
+                { i: Sparkles, l: "Streak/Push", t: "streakpush" },
+                { i: ClipboardList, l: "Tasks", t: "tasks" },
+                { i: Ticket, l: "Tickets", t: "tickets" },
+                { i: Coins, l: "Tokens", t: "tokens" },
+                { i: Coins, l: "Token Rules", t: "tokenrules" },
+                { i: Coins, l: "Token Move", t: "tokenmovement" },
+                { i: Users, l: "Activity", t: "activity" },
+                { i: Dice5, l: "Virtual", t: "virtual" },
+                { i: Trophy, l: "VIP", t: "vip" },
+                { i: Wallet, l: "Withdrawals", t: "withdrawals" },
+                { i: Trophy, l: "Won Bets", t: "wonbets" },
+                { i: X, l: "Lost Bets", t: "lostbets" },
+              ].map((q) => (
+                <button key={q.l} onClick={() => setActiveTabFromAnalytics(nav, q.t)} className="flex flex-col items-center gap-0.5 p-1 rounded border border-primary/20 hover:border-primary/50 hover:bg-primary/10 active:scale-95 transition">
+                  <q.i className="h-3 w-3 text-primary" />
+                  <span className="text-[7px] sm:text-[9px] text-foreground text-center leading-tight">{q.l}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </PanelBlock>
+      </div>
+
+      {/* ROW 9 — 5 module tiles */}
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {[
+          { l: "VIRTUAL", s: "Manage virtual matches and rounds", t: "virtual", img: tileVirtual },
+          { l: "VIP PROGRAM", s: "Manage VIP tiers and rewards", t: "vip", img: tileVip },
+          { l: "CHALLENGES", s: "Create and manage gang challenges", t: "challenges", img: tileChallenges },
+          { l: "REFERRALS", s: "Manage referrals and commissions", t: "referrals", img: tileReferrals },
+          { l: "HOUSE WALLET", s: "Manage platform funds", t: "housewallet", img: tileHousewallet },
+        ].map((m) => (
+          <Card key={m.l} className="border-primary/20 bg-card/60 p-2 sm:p-3 flex flex-col">
+            <button type="button" onClick={() => setActiveTabFromAnalytics(nav, m.t)} className="aspect-square w-full mb-1 rounded overflow-hidden border border-primary/20 hover:border-primary/60 transition active:scale-95">
+              <img src={m.img} alt={m.l} loading="lazy" width={512} height={512} className="w-full h-full object-cover" />
+            </button>
+            <div className="text-[8px] sm:text-[10px] font-bold text-primary leading-tight">{m.l}</div>
+            <div className="text-[6px] sm:text-[8px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">{m.s}</div>
+            <Button size="sm" variant="outline" className="mt-1 h-5 sm:h-6 text-[7px] sm:text-[9px] border-primary/40 text-primary px-1" onClick={() => setActiveTabFromAnalytics(nav, m.t)}>Manage</Button>
           </Card>
         ))}
       </div>
-      <Card className="glass p-4">
-        <div className="text-sm font-bold mb-3">Last 14 days · Bets & Stake</div>
-        <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={series}>
-            <defs>
-              <linearGradient id="gStake" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.6} />
-                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gBets" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.6} />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={10} />
-            <YAxis stroke="var(--muted-foreground)" fontSize={10} />
-            <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
-            <Area type="monotone" dataKey="staked" stroke="var(--primary)" fill="url(#gStake)" name="Staked" />
-            <Area type="monotone" dataKey="bets" stroke="var(--accent)" fill="url(#gBets)" name="Bets" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </Card>
-      <Card className="glass p-4">
-        <div className="text-sm font-bold mb-3">New users per day</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={series}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={10} />
-            <YAxis stroke="var(--muted-foreground)" fontSize={10} />
-            <RTooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
-            <Bar dataKey="users" fill="var(--primary)" radius={[6,6,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
+
+      {/* ROW 10 — System Status */}
+      <Card className="border-primary/20 bg-card/60 p-3">
+        <div className="text-[10px] sm:text-xs font-bold tracking-widest text-primary mb-2">SYSTEM STATUS <span className="text-muted-foreground font-normal">(COMING SOON)</span></div>
+        <div className="grid grid-cols-5 gap-1 sm:gap-2">
+          {["Platform", "Database", "Payments", "Broadcast", "AI Engine"].map((s) => (
+            <div key={s} className="flex items-center justify-between gap-1 text-[8px] sm:text-[10px] px-1.5 py-1 rounded bg-background/40 border border-primary/10">
+              <span className="text-foreground truncate">{s}</span>
+              <span className="text-emerald-400 font-bold">●</span>
+            </div>
+          ))}
+        </div>
       </Card>
     </div>
+  );
+}
+
+function setActiveTabFromAnalytics(_nav: any, _tab: string) {
+  // Dispatch a custom event the parent listens to, or fallback: store and reload
+  const ev = new CustomEvent("admin:set-tab", { detail: _tab });
+  window.dispatchEvent(ev);
+}
+
+function MetricSquare({ icon: Icon, value, title, sub, tone, compact, onClick }: { icon: any; value: any; title: string; sub?: string; tone?: string; compact?: boolean; onClick?: () => void }) {
+  const valueClass = tone === "gold-lg"
+    ? "text-[10px] sm:text-base font-black text-primary leading-tight"
+    : tone === "amber"
+    ? "text-base sm:text-xl font-black text-amber-400 leading-none"
+    : compact
+    ? "text-xs sm:text-lg font-black text-primary leading-none"
+    : "text-base sm:text-2xl font-black text-primary leading-none";
+  const content = (
+    <>
+      <Icon className="h-2.5 w-2.5 sm:h-4 sm:w-4 text-primary/70 mb-0.5" />
+      <div className={valueClass}>{value}</div>
+      <div className="mt-0.5">
+        <div className="text-[6px] sm:text-[9px] uppercase tracking-wider text-muted-foreground leading-tight font-semibold">{title}</div>
+        {sub && <div className="text-[5px] sm:text-[8px] uppercase tracking-wider text-muted-foreground/70 leading-tight">{sub}</div>}
+      </div>
+    </>
+  );
+  const baseCls = "border-primary/20 bg-card/60 p-1.5 sm:p-3 flex flex-col justify-between min-h-[68px] sm:min-h-[100px] hover:border-primary/50 hover:bg-primary/10 active:scale-95 transition cursor-pointer text-left w-full";
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`rounded-xl border shadow ${baseCls}`}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <Card className={baseCls}>{content}</Card>
+  );
+}
+
+function PanelBlock({ title, onView, children }: { title: string; onView?: () => void; children: React.ReactNode }) {
+  return (
+    <Card className="border-primary/20 bg-card/60 p-2 sm:p-3 flex flex-col min-h-[140px]">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[8px] sm:text-[11px] font-bold tracking-widest text-primary">{title}</div>
+        {onView && (
+          <button onClick={onView} className="text-[7px] sm:text-[9px] text-primary/70 hover:text-primary">View all</button>
+        )}
+      </div>
+      <div className="space-y-0.5 flex-1 overflow-hidden">{children}</div>
+    </Card>
   );
 }
 
@@ -2873,7 +2836,7 @@ function WithdrawalsPanel() {
     });
     if (!ok || typeof ok !== "object") return;
     const note = ok.value;
-    const { error } = await supabase.rpc("review_withdrawal_request", { id: r.id, _approve: approve, _note: note || undefined });
+    const { error } = await supabase.rpc("review_withdrawal_request", { _id: r.id, _approve: approve, _note: note || undefined });
     if (error) toast.error(error.message); else {
       toast.success("Done");
       await logAudit(`withdrawal_${approve ? "approved" : "declined"}`, "withdrawal", r.id, {
@@ -2913,7 +2876,7 @@ function WithdrawalsPanel() {
 /* ============================ LEADERBOARD ADMIN ============================ */
 function LeaderboardAdminPanel() {
   const [list, setList] = useState<any[]>([]);
-  const [draft, setDraft] = useState({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
+  const [draft, setDraft] = useState({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
   const [editId, setEditId] = useState<string | null>(null);
   const confirm = useConfirm();
   async function load() { setList((await supabase.from("leaderboard_overrides").select("*").order("kind").order("manual_rank", { ascending: true, nullsFirst: false })).data ?? []); }
@@ -2926,7 +2889,7 @@ function LeaderboardAdminPanel() {
     if (error) { toast.error(error.message); return; }
     await logAudit(editId ? "leaderboard_override_edit" : "leaderboard_override_create", "leaderboard_overrides", editId ?? undefined, payload);
     toast.success(editId ? "Entry updated" : "Override saved");
-    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
+    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
     setEditId(null);
     load();
   }
@@ -2936,6 +2899,24 @@ function LeaderboardAdminPanel() {
     await logAudit("leaderboard_override_delete", "leaderboard_overrides", id);
     load();
   }
+  async function toggleHide(o: any) {
+    const next = !o.is_hidden;
+    const { error } = await supabase.from("leaderboard_overrides").update({ is_hidden: next }).eq("id", o.id);
+    if (error) { toast.error(error.message); return; }
+    await logAudit(next ? "leaderboard_hide" : "leaderboard_unhide", "leaderboard_overrides", o.id, { name: o.name, kind: o.kind });
+    toast.success(next ? `${o.name} hidden from leaderboard` : `${o.name} restored`);
+    load();
+  }
+  async function hideTeam() {
+    if (!draft.name) { toast.error("Enter the team or shooter name to hide"); return; }
+    const payload: any = { kind: draft.kind, name: draft.name, is_hidden: true, wins: 0, losses: 0, draws: 0, played: 0, points: 0 };
+    const { error } = await supabase.from("leaderboard_overrides").upsert(payload, { onConflict: "id" });
+    if (error) { toast.error(error.message); return; }
+    await logAudit("leaderboard_hide", "leaderboard_overrides", undefined, payload);
+    toast.success(`${draft.name} hidden from leaderboard`);
+    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false });
+    load();
+  }
   function editEntry(o: any) {
     setEditId(o.id);
     setDraft({
@@ -2943,6 +2924,7 @@ function LeaderboardAdminPanel() {
       wins: Number(o.wins ?? 0), losses: Number(o.losses ?? 0), draws: Number(o.draws ?? 0),
       played: Number(o.played ?? 0), points: Number(o.points ?? 0),
       manual_rank: o.manual_rank ? String(o.manual_rank) : "",
+      is_hidden: !!o.is_hidden,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -2969,7 +2951,7 @@ function LeaderboardAdminPanel() {
       <Card className="glass-strong p-4 space-y-2">
         <div className="font-bold flex items-center gap-2">
           {editId ? <><Pencil className="h-4 w-4 text-primary" />Editing entry</> : "Manual override (auto-stats are computed from match results)"}
-          {editId && <button onClick={() => { setEditId(null); setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" }); }} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Cancel edit</button>}
+          {editId && <button onClick={() => { setEditId(null); setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "", is_hidden: false }); }} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Cancel edit</button>}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Select value={draft.kind} onValueChange={(v) => setDraft({ ...draft, kind: v })}>
@@ -2985,16 +2967,27 @@ function LeaderboardAdminPanel() {
           <Input type="number" placeholder="Played" value={draft.played} onChange={(e) => setDraft({ ...draft, played: Number(e.target.value) })} />
           <Input type="number" placeholder="Points" value={draft.points} onChange={(e) => setDraft({ ...draft, points: Number(e.target.value) })} />
         </div>
-        <Button className="btn-luxury" onClick={save}>
-          {editId ? <><Check className="h-4 w-4 mr-1" />Update entry</> : <><Plus className="h-4 w-4 mr-1" />Save override</>}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button className="btn-luxury" onClick={save}>
+            {editId ? <><Check className="h-4 w-4 mr-1" />Update entry</> : <><Plus className="h-4 w-4 mr-1" />Save override</>}
+          </Button>
+          {!editId && (
+            <Button variant="destructive" onClick={hideTeam} title="Hide this team/shooter from the public leaderboard without touching match history">
+              <Trash2 className="h-4 w-4 mr-1" />Remove from leaderboard
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="space-y-1">
         {list.map((o) => (
-          <Card key={o.id} className="glass p-2 flex items-center gap-2 flex-wrap text-sm">
+          <Card key={o.id} className={`glass p-2 flex items-center gap-2 flex-wrap text-sm ${o.is_hidden ? "opacity-60 border-destructive/40" : ""}`}>
             <Badge variant="outline" className="capitalize">{o.kind}</Badge>
+            {o.is_hidden && <Badge variant="destructive" className="text-[10px]">Hidden</Badge>}
             <div className="font-bold flex-1 min-w-0 truncate">{o.name} {o.top_player && <span className="text-xs text-muted-foreground">· top: {o.top_player}</span>}</div>
             <span className="text-xs text-muted-foreground">W {o.wins} · L {o.losses} · D {o.draws} · PTS {o.points}{o.manual_rank ? ` · #${o.manual_rank}` : ""}</span>
+            <Button size="sm" variant="outline" onClick={() => toggleHide(o)} title={o.is_hidden ? "Show on leaderboard" : "Hide from leaderboard"}>
+              {o.is_hidden ? <Eye className="h-3 w-3" /> : <X className="h-3 w-3" />}
+            </Button>
             <Button size="sm" variant="outline" onClick={() => editEntry(o)}><Pencil className="h-3 w-3" /></Button>
             <Button size="sm" variant="destructive" onClick={() => del(o.id)}><Trash2 className="h-3 w-3" /></Button>
           </Card>
@@ -3028,19 +3021,11 @@ function BetTrackerPanel() {
 
   async function load() {
     let qb = supabase.from("bets")
-      .select("*, bet_selections(*, matches!match_id(name,is_virtual,status,home_score,away_score))")
+      .select("*, profiles!user_id(full_name,email,ingame_name), bet_selections(*, matches!match_id(name))")
       .order("created_at", { ascending: false }).limit(200);
     if (filter !== "all") qb = qb.eq("status", filter as any);
-    const { data, error } = await qb;
-    if (error) { toast.error(error.message); setBets([]); return; }
-    const rows = data ?? [];
-    const userIds = Array.from(new Set(rows.map((b: any) => b.user_id).filter(Boolean)));
-    let profileMap: Record<string, any> = {};
-    if (userIds.length) {
-      const { data: profs } = await supabase.from("profiles").select("id,full_name,email,ingame_name").in("id", userIds);
-      (profs ?? []).forEach((p: any) => { profileMap[p.id] = p; });
-    }
-    setBets(rows.map((b: any) => ({ ...b, profiles: profileMap[b.user_id] ?? null })));
+    const { data } = await qb;
+    setBets(data ?? []);
   }
   useEffect(() => { load(); }, [filter]);
   useEffect(() => {
@@ -3054,14 +3039,14 @@ function BetTrackerPanel() {
   async function suspend(b: any) {
     const ok = await confirm({ title: "Suspend / flag ticket?", description: `Tracking ${b.tracking_id} will stop from crediting until admin unsuspends it.`, tone: "danger", confirmText: "Suspend ticket", inputLabel: "Reason", inputPlaceholder: "Why is this betslip being suspended?" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_suspend_bet", { bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_suspend_bet", { _bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_suspend", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket suspended"); load();
     }
   }
   async function unsuspend(b: any) {
-    const { error } = await supabase.rpc("admin_unsuspend_bet", { bet_id: b.id });
+    const { error } = await supabase.rpc("admin_unsuspend_bet", { _bet_id: b.id });
     if (error) toast.error(error.message); else {
       await logAudit("bet_unsuspend", "bet", b.id, { tracking_id: b.tracking_id, user_id: b.user_id, target_user_email: b.profiles?.email });
       toast.success("Ticket reactivated"); load();
@@ -3070,7 +3055,7 @@ function BetTrackerPanel() {
   async function del(b: any) {
     const ok = await confirm({ title: "Delete ticket?", description: `Tracking ${b.tracking_id}. You can optionally refund the stake before removal.`, tone: "danger", confirmText: "Delete ticket", cancelText: "Cancel", checkboxLabel: "Refund stake to user", inputLabel: "Admin note", inputPlaceholder: "Optional reason shown in logs…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_delete_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_delete_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_delete", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket deleted & refunded" : "Ticket deleted"); load();
@@ -3079,7 +3064,7 @@ function BetTrackerPanel() {
   async function refund(b: any) {
     const ok = await confirm({ title: "Mark ticket as refunded?", description: `Refunds ${Number(b.stake).toLocaleString()} tokens and closes ${b.tracking_id}.`, confirmText: "Refund stake", inputLabel: "Refund reason", inputPlaceholder: "Reason for refund…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_refund_bet", { bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_refund_bet", { _bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_refund", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket refunded"); load();
@@ -3088,7 +3073,7 @@ function BetTrackerPanel() {
   async function voidBet(b: any) {
     const ok = await confirm({ title: "Mark ticket as void?", description: `Void ${b.tracking_id}. You can return the stake while keeping the ticket record visible.`, confirmText: "Mark void", checkboxLabel: "Refund stake to user", inputLabel: "Void reason", inputPlaceholder: "Reason for voiding this ticket…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await (supabase as any).rpc("admin_void_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await (supabase as any).rpc("admin_void_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_void", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket voided & refunded" : "Ticket voided"); load();
@@ -3283,13 +3268,13 @@ function PromoRequestsPanel() {
   async function approve(r: any) {
     const ok = await confirm({ title: "Approve & generate code?", description: `Will create a ${Number(r.amount).toLocaleString()}-token promo code with ${r.usage_limit} uses.`, confirmText: "Approve", inputLabel: "Note to sponsor", inputPlaceholder: "Optional approval note…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("approve_promo_request", { id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("approve_promo_request", { _id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Promo code approved & generated"); load(); }
   }
   async function decline(r: any) {
     const ok = await confirm({ title: "Decline request?", tone: "danger", confirmText: "Decline", inputLabel: "Reason", inputPlaceholder: "Tell the sponsor why it was declined…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("decline_promo_request", { id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("decline_promo_request", { _id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Request declined"); load(); }
   }
 
@@ -3564,14 +3549,14 @@ function HouseWalletPanel() {
       confirmText: next ? "Pause Wallet" : "Resume Wallet",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("house_set_paused", { paused: next, _reason: next ? (pauseReason || undefined) : undefined });
+    const { error } = await supabase.rpc("house_set_paused", { _paused: next, _reason: next ? (pauseReason || undefined) : undefined });
     if (error) toast.error(error.message);
     else { toast.success(next ? "Payouts paused" : "Payouts resumed"); setPauseReason(""); }
   }
 
   async function adjust() {
     if (!adjAmt || !adjReason.trim()) { toast.error("Amount and reason required"); return; }
-    const { error } = await supabase.rpc("house_manual_adjust", { amount: adjAmt, _reason: adjReason.trim() });
+    const { error } = await supabase.rpc("house_manual_adjust", { _amount: adjAmt, _reason: adjReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("Wallet adjusted");
     setAdjustOpen(false); setAdjAmt(0); setAdjReason("");
@@ -3821,6 +3806,166 @@ function SeasonsAdminPanel() {
           </Card>
         ))}
         {list.length === 0 && <p className="text-muted-foreground text-sm">No seasons yet.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================ BANNED USERS ============================ */
+function BannedUsersPanel() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [q, setQ] = useState("");
+  async function load() {
+    const { data } = await supabase.from("profiles").select("id,full_name,email,gang_name,is_banned,ban_reason,updated_at").eq("is_banned", true).order("updated_at", { ascending: false });
+    setUsers(data ?? []);
+  }
+  useEffect(() => { load(); }, []);
+  async function unban(id: string) {
+    const { error } = await supabase.from("profiles").update({ is_banned: false, ban_reason: null }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("User unbanned");
+    logAudit("user_unban", "user", id);
+    load();
+  }
+  const filtered = users.filter((u) => !q || (u.full_name ?? "").toLowerCase().includes(q.toLowerCase()) || (u.email ?? "").toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="space-y-3">
+      <Card className="glass-strong p-4 flex items-center gap-3 backdrop-blur-2xl border-destructive/30">
+        <Shield className="h-5 w-5 text-destructive" />
+        <div className="flex-1">
+          <div className="font-bold">Banned Users</div>
+          <div className="text-xs text-muted-foreground">{filtered.length} banned · click Unban to restore access.</div>
+        </div>
+        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
+      </Card>
+      {filtered.length === 0 && <p className="text-muted-foreground text-sm">No banned users.</p>}
+      {filtered.map((u) => (
+        <Card key={u.id} className="glass-strong p-4 flex items-center justify-between gap-3 flex-wrap backdrop-blur-2xl border-destructive/20">
+          <div className="min-w-0 flex-1">
+            <div className="font-bold">{u.full_name || "—"} <span className="text-xs text-muted-foreground font-normal">{u.email}</span></div>
+            <div className="text-xs text-muted-foreground">{u.gang_name ?? "Independent"} · banned {new Date(u.updated_at).toLocaleDateString()}</div>
+            {u.ban_reason && <div className="text-xs mt-1 text-destructive/80">Reason: {u.ban_reason}</div>}
+          </div>
+          <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-300" onClick={() => unban(u.id)}>Unban</Button>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/* ============================ BETS BY STATUS (won / lost) ============================ */
+function BetsByStatusPanel({ status }: { status: "won" | "lost" }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, any>>({});
+  useEffect(() => {
+    (async () => {
+      const { data } = await (supabase as any).from("bets")
+        .select("id,user_id,tracking_id,stake,potential_payout,settled_at,created_at,bet_selections(selection_label,matches:match_id(name))")
+        .eq("status", status)
+        .order("settled_at", { ascending: false, nullsFirst: false })
+        .limit(200);
+      const list = data ?? [];
+      setRows(list);
+      const ids = Array.from(new Set(list.map((b: any) => b.user_id).filter(Boolean)));
+      if (ids.length) {
+        const { data: p } = await supabase.from("profiles").select("id,full_name,email,gang_name").in("id", ids as string[]);
+        const map: Record<string, any> = {}; (p ?? []).forEach((x: any) => { map[x.id] = x; }); setProfiles(map);
+      }
+    })();
+  }, [status]);
+  const tone = status === "won" ? "emerald" : "destructive";
+  const label = status === "won" ? "Won Bets" : "Lost Bets";
+  return (
+    <div className="space-y-3">
+      <Card className={`glass-strong p-4 flex items-center gap-3 backdrop-blur-2xl border-${tone}-500/30`}>
+        {status === "won" ? <Trophy className="h-5 w-5 text-emerald-400" /> : <X className="h-5 w-5 text-destructive" />}
+        <div>
+          <div className="font-bold">{label}</div>
+          <div className="text-xs text-muted-foreground">{rows.length} ticket(s)</div>
+        </div>
+      </Card>
+      {rows.length === 0 && <p className="text-muted-foreground text-sm">No {status} bets yet.</p>}
+      <div className="grid gap-2">
+        {rows.map((b) => {
+          const u = profiles[b.user_id];
+          const matches = (b.bet_selections ?? []).map((s: any) => s.matches?.name || s.selection_label).filter(Boolean).join(" · ");
+          return (
+            <Card key={b.id} className="backdrop-blur-2xl bg-card/85 border-primary/25 p-4 shadow-luxury">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold">{u?.full_name ?? "—"}</span>
+                    <span className="text-xs text-muted-foreground">{u?.email}</span>
+                    <span className="font-mono text-[10px] text-primary">{b.tracking_id}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">{matches || "—"}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{new Date(b.settled_at ?? b.created_at).toLocaleString()}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{status === "won" ? "Amount Won" : "Stake Lost"}</div>
+                  <div className={`text-lg font-black ${status === "won" ? "text-emerald-300" : "text-destructive"}`}>
+                    {(status === "won" ? b.potential_payout : b.stake)?.toLocaleString?.() ?? 0}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================ TOKEN MOVEMENT (credits + debits) ============================ */
+function TokenMovementPanel() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [filter, setFilter] = useState<"all" | "credit" | "debit">("all");
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("token_transactions").select("id,user_id,amount,kind,description,balance_after,created_at").order("created_at", { ascending: false }).limit(300);
+      setRows(data ?? []);
+    })();
+  }, []);
+  const filtered = rows.filter((r) => filter === "all" || (filter === "credit" ? r.amount > 0 : r.amount < 0));
+  const credits = rows.filter((r) => r.amount > 0).reduce((a, r) => a + r.amount, 0);
+  const debits = rows.filter((r) => r.amount < 0).reduce((a, r) => a + Math.abs(r.amount), 0);
+  return (
+    <div className="space-y-3">
+      <Card className="glass-strong p-4 backdrop-blur-2xl border-primary/30">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Coins className="h-5 w-5 text-primary" />
+          <div>
+            <div className="font-bold">Token Movement</div>
+            <div className="text-xs text-muted-foreground">Credits and debits across the platform</div>
+          </div>
+          <div className="ml-auto flex items-center gap-3 text-xs">
+            <span className="text-emerald-300 font-bold">+ {credits.toLocaleString()}</span>
+            <span className="text-destructive font-bold">− {debits.toLocaleString()}</span>
+          </div>
+        </div>
+        <div className="flex gap-1 mt-3">
+          {(["all", "credit", "debit"] as const).map((f) => (
+            <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} className="text-[10px] capitalize" onClick={() => setFilter(f)}>{f}</Button>
+          ))}
+        </div>
+      </Card>
+      {filtered.length === 0 && <p className="text-muted-foreground text-sm">No token movements.</p>}
+      <div className="grid gap-2">
+        {filtered.map((r) => (
+          <Card key={r.id} className="backdrop-blur-2xl bg-card/85 border-primary/20 p-3 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold uppercase tracking-wider text-primary">{r.kind}</div>
+              <div className="text-xs text-muted-foreground truncate">{r.description ?? "—"}</div>
+              <div className="text-[10px] text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
+            </div>
+            <div className="text-right">
+              <div className={`text-base font-black ${r.amount > 0 ? "text-emerald-300" : "text-destructive"}`}>
+                {r.amount > 0 ? "+" : "−"}{Math.abs(r.amount).toLocaleString()}
+              </div>
+              <div className="text-[10px] text-muted-foreground">bal {Number(r.balance_after ?? 0).toLocaleString()}</div>
+            </div>
+          </Card>
+        ))}
       </div>
     </div>
   );
