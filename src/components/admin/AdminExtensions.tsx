@@ -10,17 +10,21 @@ import { toast } from "sonner";
 import { AlertTriangle, Activity, TrendingUp, TrendingDown, Wallet, Users, Image as ImageIcon, Crown, Gift, RefreshCw, Bell, Send, Coins, Sparkles, FileDown, Heart, Bot, Loader2 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
 import { useServerFn } from "@tanstack/react-start";
-// AI Copilot + Web Push features skipped in this build.
+import { adminAiChat } from "@/lib/admin-ai.functions";
+import { generateVapidKeys } from "@/lib/vapid.functions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
-/* =============== STREAK / LOGIN SETTINGS (push skipped) =============== */
+/* =============== STREAK / LOGIN / PUSH SETTINGS =============== */
 export function StreakAndPushPanel() {
   const [s, setS] = useState<any>(null);
   const [verifying, setVerifying] = useState(false);
+  const [generatedPriv, setGeneratedPriv] = useState<string | null>(null);
+  const [genLoading, setGenLoading] = useState(false);
+  const genVapid = useServerFn(generateVapidKeys);
 
   async function load() {
     const { data } = await supabase.from("app_settings")
-      .select("daily_login_enabled, daily_login_base_reward, daily_login_bonus_per_day, daily_login_max_streak")
+      .select("daily_login_enabled, daily_login_base_reward, daily_login_bonus_per_day, daily_login_max_streak, vapid_public_key, vapid_subject, push_endpoint_url")
       .eq("id", 1).maybeSingle();
     setS(data ?? {});
   }
@@ -33,9 +37,29 @@ export function StreakAndPushPanel() {
 
   async function verifyXp() {
     setVerifying(true);
-    const { data, error } = await supabase.rpc("verify_xp_consistency", { user_id: undefined });
+    const { data, error } = await supabase.rpc("verify_xp_consistency", { _user_id: undefined });
     setVerifying(false);
     if (error) toast.error(error.message); else toast.success(`Checked ${(data as any)?.checked ?? 0} users · fixed ${(data as any)?.fixed ?? 0}`);
+  }
+
+  async function generate() {
+    setGenLoading(true);
+    try {
+      const res = await genVapid();
+      if ((res as any)?.error) {
+        toast.error((res as any).error);
+        return;
+      }
+      if (!res?.privateKey) {
+        toast.error("Server returned no private key. Check server logs.");
+        return;
+      }
+      setS((prev: any) => ({ ...prev, vapid_public_key: res.publicKey, vapid_subject: prev?.vapid_subject || "mailto:admin@lomitashootersleague.com" }));
+      setGeneratedPriv(res.privateKey ?? null);
+      toast.success("VAPID keys generated. Copy the private key from the dialog.");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate VAPID keys");
+    } finally { setGenLoading(false); }
   }
 
   if (!s) return null;
@@ -43,7 +67,7 @@ export function StreakAndPushPanel() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-5 space-y-3 glass-card">
+      <Card className="p-5 space-y-3">
         <div className="flex items-center gap-2"><Gift className="h-5 w-5 text-amber-300" /><div className="font-bold">Daily login streak</div></div>
         <div className="flex items-center justify-between">
           <span className="text-sm">Claims enabled</span>
@@ -66,14 +90,48 @@ export function StreakAndPushPanel() {
         <p className="text-[11px] text-muted-foreground">Day 1 = base. At cap a user earns <span className="font-bold text-amber-300">{Math.round(example).toLocaleString()}</span> tokens per claim.</p>
       </Card>
 
-      <Card className="p-5 space-y-3 glass-card">
-        <div className="flex items-center gap-2"><Bell className="h-5 w-5 text-muted-foreground" /><div className="font-bold">Web push</div></div>
-        <p className="text-[11px] text-muted-foreground">Web push notifications are disabled in this build. Users still receive in-app notifications.</p>
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center gap-2"><Bell className="h-5 w-5 text-primary" /><div className="font-bold">Web push (VAPID)</div></div>
+        <p className="text-[11px] text-muted-foreground">Click <strong>Generate keys</strong> to create a VAPID pair on the server. The public key is saved automatically — copy the private key and paste it into the <span className="font-mono">VAPID_PRIVATE_KEY</span> backend secret.</p>
+        <Button onClick={generate} disabled={genLoading} variant="outline">{genLoading ? "Generating…" : "Generate keys"}</Button>
+        <Dialog open={!!generatedPriv} onOpenChange={(o) => { if (!o) setGeneratedPriv(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>VAPID private key (one-time)</DialogTitle>
+              <DialogDescription>
+                Copy this now. It will <strong>never</strong> be shown again. Paste it into your backend secret named <span className="font-mono">VAPID_PRIVATE_KEY</span>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-widest text-amber-300">Public key (saved automatically)</div>
+              <code className="text-xs break-all block font-mono p-2 rounded bg-muted">{s?.vapid_public_key}</code>
+              <div className="text-[10px] uppercase tracking-widest text-amber-300">Private key</div>
+              <code className="text-xs break-all block font-mono p-2 rounded bg-amber-500/10 border border-amber-500/40">{generatedPriv}</code>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { if (generatedPriv) { navigator.clipboard.writeText(generatedPriv); toast.success("Private key copied"); } }}>Copy private key</Button>
+              <Button onClick={() => setGeneratedPriv(null)}>I've saved it</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <div>
+          <label className="text-[10px] uppercase text-muted-foreground">VAPID public key</label>
+          <Input value={s.vapid_public_key ?? ""} onChange={(e) => setS({ ...s, vapid_public_key: e.target.value })} placeholder="BNc..." />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase text-muted-foreground">VAPID subject (mailto:)</label>
+          <Input value={s.vapid_subject ?? ""} onChange={(e) => setS({ ...s, vapid_subject: e.target.value })} placeholder="mailto:admin@example.com" />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase text-muted-foreground">Push delivery endpoint URL</label>
+          <Input value={s.push_endpoint_url ?? ""} onChange={(e) => setS({ ...s, push_endpoint_url: e.target.value })} placeholder="https://your-site.lovable.app/api/public/hooks/send-push" />
+          <p className="text-[10px] text-muted-foreground mt-1">When a notification is created, the server calls this URL to deliver pushes. Leave empty to disable push delivery.</p>
+        </div>
       </Card>
 
-      <Card className="p-5 space-y-3 glass-card">
+      <Card className="p-5 space-y-3">
         <div className="flex items-center gap-2"><RefreshCw className="h-5 w-5 text-emerald-300" /><div className="font-bold">XP / VIP integrity</div></div>
-        <p className="text-xs text-muted-foreground">Recomputes every user's XP from their actual bets, wins, and referrals.</p>
+        <p className="text-xs text-muted-foreground">Recomputes every user's XP from their actual bets, wins, and referrals. Fixes drift and re-applies the right VIP tier. Runs nightly automatically.</p>
         <Button onClick={verifyXp} disabled={verifying} variant="outline">{verifying ? "Verifying…" : "Verify now"}</Button>
       </Card>
 
@@ -111,7 +169,7 @@ export function RiskPanel() {
   }, []);
 
   async function togglePause() {
-    const { error } = await supabase.rpc("house_set_paused", { paused: !paused, _reason: reason || undefined });
+    const { error } = await supabase.rpc("house_set_paused", { _paused: !paused, _reason: reason || undefined });
     if (error) return toast.error(error.message);
     toast.success(!paused ? "Payouts paused globally" : "Payouts resumed");
     load();
@@ -209,7 +267,7 @@ export function PnLPanel() {
   const [topUsers, setTopUsers] = useState<any[]>([]);
 
   async function load() {
-    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { days: days });
+    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { _days: days });
     setData(pnl);
     // build daily series from house_transactions
     const since = new Date(); since.setDate(since.getDate() - days);
@@ -421,7 +479,7 @@ export function BroadcastPanel() {
   async function send() {
     if (!title.trim()) { toast.error("Title required"); return; }
     setSending(true);
-    const { data, error } = await supabase.rpc("admin_broadcast", { title: title, _body: body || "", _link: link || "", _segment: segment });
+    const { data, error } = await supabase.rpc("admin_broadcast", { _title: title, _body: body || "", _link: link || "", _segment: segment });
     setSending(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Sent to ${(data as any)?.sent ?? 0} users`);
@@ -517,7 +575,7 @@ export function ReportsPanel() {
   const [series, setSeries] = useState<any[]>([]);
 
   async function load() {
-    const { data } = await supabase.rpc("admin_pnl_summary", { days: days });
+    const { data } = await supabase.rpc("admin_pnl_summary", { _days: days });
     setPnl(data);
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const { data: bets } = await supabase.from("bets").select("created_at,stake,potential_payout,status,settled_at").gte("created_at", since);
@@ -576,13 +634,104 @@ export function ReportsPanel() {
   );
 }
 
-/* ===================== ADMIN AI PANEL (skipped in this build) ===================== */
+/* ===================== ADMIN AI PANEL (LIVE) ===================== */
+type AiAction = { name: string; args: any; result: any; error?: string };
+type AiMsg = { role: "user" | "assistant"; content: string; actions?: AiAction[] };
+
 export function AdminAILivePanel() {
+  const ask = useServerFn(adminAiChat);
+  const [messages, setMessages] = useState<AiMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [model, setModel] = useState<string>("google/gemini-2.5-flash");
+
+  async function send() {
+    const text = input.trim();
+    if (!text) return;
+    const next: AiMsg[] = [...messages, { role: "user", content: text }];
+    setMessages(next); setInput(""); setLoading(true);
+    try {
+      const res: any = await ask({
+        data: { messages: next.map(({ role, content }) => ({ role, content })), model },
+      });
+      if (res?.error) {
+        toast.error(res.error);
+        setMessages([...next, { role: "assistant", content: `⚠️ ${res.error}`, actions: res.actions ?? [] }]);
+        return;
+      }
+      const { reply, actions } = res;
+      setMessages([...next, { role: "assistant", content: reply || "(no reply)", actions: actions ?? [] }]);
+    } catch (e: any) {
+      toast.error(e?.message ?? "AI request failed");
+    } finally { setLoading(false); }
+  }
+
+  const quick = [
+    "Summarize today's platform health",
+    "Show top 5 matches by open exposure",
+    "Broadcast: weekend 2x XP event to all users",
+    "Find user 'lomita' and credit them 5000 tokens as goodwill",
+  ];
+
   return (
-    <Card className="p-6 glass-card text-center space-y-2">
-      <div className="text-sm font-semibold">Admin AI Copilot</div>
-      <p className="text-xs text-muted-foreground">AI features are disabled in this build.</p>
-    </Card>
+    <div className="space-y-4">
+      <Card className="p-5 flex items-center gap-3 flex-wrap bg-gradient-to-br from-card to-primary/5">
+        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/40 to-accent/40 grid place-items-center shadow-gold"><Bot className="h-5 w-5 text-primary" /></div>
+        <div className="min-w-0">
+          <div className="font-bold flex items-center gap-2">Admin AI Copilot <Badge variant="outline" className="border-accent/50 text-accent text-[10px]">Tool-enabled</Badge></div>
+          <div className="text-xs text-muted-foreground">Full admin powers: search, broadcast, refund, ban/mute, house controls, withdrawals, promo reviews.</div>
+        </div>
+        <select value={model} onChange={(e)=>setModel(e.target.value)} className="ml-auto text-xs bg-background border border-border rounded px-2 py-1">
+          <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (fast)</option>
+          <option value="google/gemini-2.5-pro">Gemini 2.5 Pro (deep)</option>
+          <option value="openai/gpt-5-mini">GPT-5 mini</option>
+          <option value="openai/gpt-5">GPT-5 (most capable)</option>
+        </select>
+      </Card>
+
+      <Card className="p-3 max-h-[55vh] overflow-y-auto space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center py-6 space-y-3">
+            <div className="text-sm text-muted-foreground">Try a quick prompt:</div>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {quick.map((q) => <Button key={q} size="sm" variant="outline" onClick={()=>setInput(q)}>{q}</Button>)}
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role==="user"?"justify-end":"justify-start"}`}>
+            <div className={`max-w-[85%] space-y-2 ${m.role==="user"?"":""}`}>
+              <div className={`rounded-xl p-3 text-sm whitespace-pre-wrap ${m.role==="user"?"bg-primary/20 text-foreground":"bg-card border border-border"}`}>{m.content}</div>
+              {m.actions && m.actions.length > 0 && (
+                <details className="rounded-lg border border-accent/30 bg-accent/5 p-2 text-[11px]">
+                  <summary className="cursor-pointer flex items-center gap-2 text-muted-foreground">
+                    <Sparkles className="h-3 w-3 text-accent" />
+                    <span>Used {m.actions.length} admin tool{m.actions.length>1?"s":""}</span>
+                    <span className="ml-auto opacity-60">view details</span>
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {m.actions.map((a, j) => (
+                      <li key={j} className="flex items-center gap-2">
+                        {a.error
+                          ? <Badge variant="outline" className="border-destructive/50 text-destructive">error</Badge>
+                          : <Badge variant="outline" className="border-accent/50 text-accent">ok</Badge>}
+                        <span className="font-mono">{a.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading && <div className="flex justify-start"><div className="bg-card border border-border rounded-xl p-3 text-sm flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Thinking…</div></div>}
+      </Card>
+
+      <Card className="p-3 flex gap-2">
+        <Textarea rows={2} value={input} onChange={(e)=>setInput(e.target.value)} placeholder="Ask the copilot…" onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} }} />
+        <Button onClick={send} disabled={loading || !input.trim()} className="bg-gradient-gold text-primary-foreground"><Send className="h-3 w-3 mr-1" />Send</Button>
+      </Card>
+    </div>
   );
 }
 
@@ -683,7 +832,7 @@ export function EmblemModerationPanel() {
 
   async function review(id: string, approve: boolean) {
     const note = approve ? null : prompt("Reason for rejection?") || null;
-    const { error } = await supabase.rpc("review_gang_emblem", { id: id, _approve: approve, _note: note ?? undefined });
+    const { error } = await supabase.rpc("review_gang_emblem", { _id: id, _approve: approve, _note: note ?? undefined });
     if (error) toast.error(error.message); else { toast.success(approve ? "Approved" : "Rejected"); load(); }
   }
 
@@ -753,7 +902,7 @@ export function VipAdminPanel() {
   }
 
   async function adjust(uid: string, delta: number) {
-    const { error } = await supabase.rpc("admin_adjust_xp", { user_id: uid, _delta: delta, _reason: "admin manual" });
+    const { error } = await supabase.rpc("admin_adjust_xp", { _user_id: uid, _delta: delta, _reason: "admin manual" });
     if (error) toast.error(error.message); else { toast.success("XP adjusted"); load(); }
   }
 
