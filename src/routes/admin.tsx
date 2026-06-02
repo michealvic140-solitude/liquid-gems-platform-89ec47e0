@@ -24,6 +24,7 @@ import tileVip from "@/assets/tile-vip.jpg";
 import tileChallenges from "@/assets/tile-challenges.jpg";
 import tileReferrals from "@/assets/tile-referrals.jpg";
 import tileHousewallet from "@/assets/tile-housewallet.jpg";
+import leagueSkullFire from "@/assets/league-skull-fire.jpg";
 import { Countdown } from "@/components/Countdown";
 import { useAuth, ROLE_LABELS, type AppRole } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -46,7 +47,13 @@ function AdminPage() {
   const { isAdmin, isMod, loading } = useAuth();
   const nav = useNavigate();
   const [alerts, setAlerts] = useState<Record<string, number>>({});
-  const [activeTab, setActiveTab] = useState(isAdmin ? "analytics" : "tickets");
+  // Default to analytics for admins; we re-sync once auth resolves so a reload
+  // never lands on the Ticket Reports tab when an admin refreshes the page.
+  const [activeTab, setActiveTab] = useState<string>("analytics");
+  useEffect(() => {
+    if (loading) return;
+    setActiveTab((prev) => (isAdmin ? (prev === "tickets" ? "analytics" : prev) : "tickets"));
+  }, [loading, isAdmin]);
   useEffect(() => { if (!loading && !isAdmin && !isMod) nav({ to: "/" }); }, [isAdmin, isMod, loading, nav]);
   useEffect(() => {
     if (!isAdmin) return;
