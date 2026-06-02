@@ -2710,16 +2710,30 @@ function MetricSquare({ icon: Icon, value, title, sub, tone, compact, onClick }:
   );
 }
 
-function PanelBlock({ title, onView, children }: { title: string; onView?: () => void; children: React.ReactNode }) {
+type PanelAccent = "primary" | "sky" | "rose" | "violet" | "amber" | "emerald";
+function PanelBlock({ title, onView, accent = "primary", children }: { title: string; onView?: () => void; accent?: PanelAccent; children: React.ReactNode }) {
+  const accents: Record<PanelAccent, { border: string; title: string; link: string; gradient: string }> = {
+    primary:  { border: "border-primary/25",   title: "text-primary",     link: "text-primary/70 hover:text-primary",       gradient: "from-primary/10" },
+    sky:      { border: "border-sky-500/25",   title: "text-sky-300",     link: "text-sky-300/70 hover:text-sky-200",       gradient: "from-sky-500/10" },
+    rose:     { border: "border-rose-500/25",  title: "text-rose-300",    link: "text-rose-300/70 hover:text-rose-200",     gradient: "from-rose-500/10" },
+    violet:   { border: "border-violet-500/25",title: "text-violet-300",  link: "text-violet-300/70 hover:text-violet-200", gradient: "from-violet-500/10" },
+    amber:    { border: "border-amber-500/25", title: "text-amber-300",   link: "text-amber-300/70 hover:text-amber-200",   gradient: "from-amber-500/10" },
+    emerald:  { border: "border-emerald-500/25",title:"text-emerald-300", link: "text-emerald-300/70 hover:text-emerald-200",gradient: "from-emerald-500/10" },
+  };
+  const a = accents[accent];
   return (
-    <Card className="border-primary/20 bg-card/60 p-2 sm:p-3 flex flex-col min-h-[140px]">
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="text-[8px] sm:text-[11px] font-bold tracking-widest text-primary">{title}</div>
+    <Card className={`relative overflow-hidden ${a.border} bg-card/60 p-2 sm:p-3 flex flex-col h-[150px] sm:h-[170px]`}>
+      <div className={`absolute inset-0 bg-gradient-to-br ${a.gradient} via-transparent to-transparent pointer-events-none`} />
+      <div className="absolute -bottom-6 -right-6 opacity-[0.04] pointer-events-none">
+        <img src={lslLogo} alt="" className="h-24 w-24 object-contain" />
+      </div>
+      <div className="relative flex items-center justify-between mb-1.5">
+        <div className={`text-[8px] sm:text-[11px] font-bold tracking-widest ${a.title}`}>{title}</div>
         {onView && (
-          <button onClick={onView} className="text-[7px] sm:text-[9px] text-primary/70 hover:text-primary">View all</button>
+          <button onClick={onView} className={`text-[7px] sm:text-[9px] ${a.link}`}>View all</button>
         )}
       </div>
-      <div className="space-y-0.5 flex-1 overflow-hidden">{children}</div>
+      <div className="relative space-y-0.5 flex-1 overflow-y-auto pr-0.5">{children}</div>
     </Card>
   );
 }
