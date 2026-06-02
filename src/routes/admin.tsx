@@ -2328,14 +2328,14 @@ function AnalyticsPanel() {
         supabase.from("bets").select("status, stake, potential_payout, created_at"),
         supabase.from("token_transactions").select("amount, kind, created_at"),
         supabase.from("token_requests").select("status, amount"),
-        supabase.from("matches").select("id,name,status,created_at").in("status", ["live", "scheduled"]).limit(5),
+        supabase.from("matches").select("id,name,status,created_at,home_team:teams!home_team_id(name,logo_url),away_team:teams!away_team_id(name,logo_url)").eq("is_virtual", false).in("status", ["live", "scheduled"]).limit(5),
         supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
         supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
-        supabase.from("events").select("*").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
+        supabase.from("events").select("id,title,banner_url,starts_at,ends_at,is_active").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
