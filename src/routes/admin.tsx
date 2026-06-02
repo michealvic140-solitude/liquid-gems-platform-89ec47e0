@@ -2507,19 +2507,21 @@ function AnalyticsPanel() {
       {/* ROW 6 — 3 wider squares + image cell */}
       <div className="grid grid-cols-4 gap-2 sm:gap-3">
         {row6.map((x) => <MetricSquare key={x.title} {...x} compact />)}
-        <Card className="overflow-hidden border-primary/20 bg-card/60 relative min-h-[80px]">
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(45_30%_15%),hsl(0_50%_15%))] opacity-80" />
-          <div className="absolute inset-0 grid place-items-center text-[10px] uppercase tracking-widest text-primary/80 font-bold">League</div>
+        <Card className="overflow-hidden border-primary/20 bg-card/60 relative min-h-[80px] group">
+          <img src={leagueSkullFire} alt="League" loading="lazy" width={512} height={512}
+               className="absolute inset-0 h-full w-full object-cover scale-110 animate-pulse-glow group-hover:scale-125 transition-transform duration-[3000ms]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="absolute inset-x-0 bottom-1 text-center text-[10px] uppercase tracking-widest text-white font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">League</div>
         </Card>
       </div>
 
       {/* ROW 7 — Recent Activity | Live Gang Wars | Highlights Hub */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <PanelBlock title="RECENT ACTIVITY" onView={() => setActiveTabFromAnalytics(nav, "activity")}>
+        <PanelBlock title="RECENT ACTIVITY" accent="sky" onView={() => setActiveTabFromAnalytics(nav, "activity")}>
           {activity.length === 0 && <div className="text-[10px] text-muted-foreground">No activity yet</div>}
-          {activity.map((a, i) => (
-            <button key={i} onClick={() => setActiveTabFromAnalytics(nav, "audit")} className="w-full text-left flex items-start gap-1.5 text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded transition">
-              <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+          {activity.slice(0, 3).map((a, i) => (
+            <button key={i} onClick={() => setActiveTabFromAnalytics(nav, "audit")} className="w-full text-left flex items-start gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-sky-500/10 rounded transition">
+              <Sparkles className="h-3 w-3 text-sky-400 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <div className="text-foreground truncate">{a.action?.replace(/_/g, " ")}</div>
                 <div className="text-muted-foreground text-[8px] sm:text-[10px]">{ts(a.created_at)}</div>
@@ -2527,20 +2529,25 @@ function AnalyticsPanel() {
             </button>
           ))}
         </PanelBlock>
-        <PanelBlock title="LIVE GANG WARS" onView={() => nav({ to: "/matches" })}>
+        <PanelBlock title="LIVE GANG WARS" accent="rose" onView={() => nav({ to: "/matches" })}>
           {liveMatches.length === 0 && <div className="text-[10px] text-muted-foreground">No live wars</div>}
-          {liveMatches.map((m) => (
-            <button key={m.id} onClick={() => nav({ to: "/matches/$matchId", params: { matchId: m.id } })} className="w-full flex items-center justify-between text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
-              <span className="truncate text-foreground text-left">{m.name}</span>
-              <Badge variant="outline" className="text-[8px] border-primary/40 text-primary px-1 py-0">{m.status}</Badge>
-            </button>
-          ))}
+          {liveMatches.slice(0, 3).map((m: any) => {
+            const home = m.home_team; const away = m.away_team;
+            const initial = (n?: string) => (n ? n.charAt(0).toUpperCase() : "?");
+            return (
+              <button key={m.id} onClick={() => nav({ to: "/matches/$matchId", params: { matchId: m.id } })} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-rose-500/10 rounded px-1 transition">
+                {home?.logo_url ? <img src={home.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(home?.name)}</div>}
+                <div className="flex-1 min-w-0 text-center text-foreground font-semibold truncate">{home?.name ?? "Home"} <span className="text-muted-foreground">vs</span> {away?.name ?? "Away"}</div>
+                {away?.logo_url ? <img src={away.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(away?.name)}</div>}
+              </button>
+            );
+          })}
         </PanelBlock>
-        <PanelBlock title="HIGHLIGHTS HUB" onView={() => setActiveTabFromAnalytics(nav, "content")}>
+        <PanelBlock title="HIGHLIGHTS HUB" accent="violet" onView={() => setActiveTabFromAnalytics(nav, "content")}>
           {highlights.length === 0 && <div className="text-[10px] text-muted-foreground">No highlights yet</div>}
-          {highlights.map((h) => (
-            <button key={h.id} onClick={() => setActiveTabFromAnalytics(nav, "content")} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
-              {h.media_type === "video" ? <Play className="h-3 w-3 text-primary shrink-0" /> : <ImageIcon className="h-3 w-3 text-primary shrink-0" />}
+          {highlights.slice(0, 3).map((h) => (
+            <button key={h.id} onClick={() => setActiveTabFromAnalytics(nav, "content")} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-violet-500/10 rounded px-1 transition">
+              {h.media_type === "video" ? <Play className="h-3 w-3 text-violet-400 shrink-0" /> : <ImageIcon className="h-3 w-3 text-violet-400 shrink-0" />}
               <div className="min-w-0 flex-1 truncate text-left">{h.title}</div>
             </button>
           ))}
@@ -2549,29 +2556,36 @@ function AnalyticsPanel() {
 
       {/* ROW 8 — Event Countdown | Broadcast Center | Quick Actions */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <PanelBlock title="EVENT COUNTDOWN" onView={() => setActiveTabFromAnalytics(nav, "events")}>
+        <PanelBlock title="EVENT COUNTDOWN" accent="amber" onView={() => setActiveTabFromAnalytics(nav, "events")}>
           {event ? (
-            <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-primary/5 rounded p-1 transition space-y-1">
-              <div className="text-[9px] sm:text-xs font-bold text-primary truncate">{event.title}</div>
-              <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at ?? event.starts_at} /></div>
-              <div className="text-[7px] sm:text-[9px] text-muted-foreground">{new Date(event.starts_at ?? event.ends_at).toLocaleString()}</div>
+            <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-amber-500/10 rounded p-1 transition flex gap-1.5 items-center">
+              {event.banner_url ? (
+                <img src={event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
+              ) : (
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-md bg-amber-500/20 grid place-items-center border border-amber-500/40 shrink-0"><Calendar className="h-4 w-4 text-amber-300" /></div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] sm:text-xs font-bold text-foreground truncate">{event.title}</div>
+                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at ?? event.starts_at} /></div>
+                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.starts_at ?? event.ends_at).toLocaleString()}</div>
+              </div>
             </button>
           ) : (
             <div className="text-[10px] text-muted-foreground">No active event</div>
           )}
         </PanelBlock>
-        <PanelBlock title="BROADCAST CENTER" onView={() => setActiveTabFromAnalytics(nav, "broadcast")}>
+        <PanelBlock title="BROADCAST CENTER" accent="emerald" onView={() => setActiveTabFromAnalytics(nav, "broadcast")}>
           {broadcasts.length === 0 && <div className="text-[10px] text-muted-foreground">No broadcasts</div>}
-          {broadcasts.map((b) => (
-            <button key={b.id} onClick={() => setActiveTabFromAnalytics(nav, "broadcast")} className="w-full text-left text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
-              <div className="flex items-center gap-1"><Megaphone className="h-2.5 w-2.5 text-primary shrink-0" /><div className="truncate text-foreground font-semibold">{b.title || "Broadcast"}</div></div>
+          {broadcasts.slice(0, 2).map((b) => (
+            <button key={b.id} onClick={() => setActiveTabFromAnalytics(nav, "broadcast")} className="w-full text-left text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-emerald-500/10 rounded px-1 transition">
+              <div className="flex items-center gap-1"><Megaphone className="h-2.5 w-2.5 text-emerald-400 shrink-0" /><div className="truncate text-foreground font-semibold">{b.title || "Broadcast"}</div></div>
               {b.body && <div className="text-[8px] sm:text-[10px] text-muted-foreground truncate pl-3.5">{b.body}</div>}
               <div className="text-[7px] sm:text-[9px] text-muted-foreground pl-3.5">{ts(b.created_at)}</div>
             </button>
           ))}
         </PanelBlock>
-        <PanelBlock title="QUICK ACTIONS">
-          <div className="max-h-[260px] sm:max-h-[320px] overflow-y-auto pr-1 -mr-1">
+        <PanelBlock title="QUICK ACTIONS" accent="primary">
+          <div className="max-h-[140px] sm:max-h-[160px] overflow-y-auto pr-1 -mr-1">
             <div className="grid grid-cols-3 gap-1">
               {[
                 { i: BarChart3, l: "Analytics", t: "analytics" },
