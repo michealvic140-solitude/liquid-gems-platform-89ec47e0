@@ -158,6 +158,7 @@ import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PopupAd } from "@/components/PopupAd";
 import { BetSlipFab } from "@/components/BetSlip";
 import { PageSpinner } from "@/components/PageSpinner";
+import { ReloadBroadcastListener } from "@/components/ReloadBroadcastListener";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
@@ -177,6 +178,7 @@ function RootComponent() {
             <BanGate />
             <PopupAd />
             <BetSlipFab />
+            <ReloadBroadcastListener />
             <Toaster />
           </ConfirmProvider>
         </BetSlipProvider>
