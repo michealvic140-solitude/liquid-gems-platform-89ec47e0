@@ -3260,7 +3260,7 @@ function PromoRequestsPanel() {
   const [filter, setFilter] = useState<string>("pending");
   async function load() {
     let qb = supabase.from("promo_code_requests")
-      .select("*, profiles!user_id(full_name,email)")
+      .select("*, profiles!promo_code_requests_user_profile_fkey(full_name,email)")
       .order("created_at", { ascending: false });
     if (filter !== "all") qb = qb.eq("status", filter);
     const { data } = await qb;
