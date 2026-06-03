@@ -83,6 +83,7 @@ export type Database = {
           daily_login_max_streak: number
           emblem_auto_approve: boolean
           exposure_warn_pct: number
+          force_reload_at: string | null
           friends_enabled: boolean
           gift_daily_limit: number
           gift_enabled: boolean
@@ -151,6 +152,7 @@ export type Database = {
           daily_login_max_streak?: number
           emblem_auto_approve?: boolean
           exposure_warn_pct?: number
+          force_reload_at?: string | null
           friends_enabled?: boolean
           gift_daily_limit?: number
           gift_enabled?: boolean
@@ -219,6 +221,7 @@ export type Database = {
           daily_login_max_streak?: number
           emblem_auto_approve?: boolean
           exposure_warn_pct?: number
+          force_reload_at?: string | null
           friends_enabled?: boolean
           gift_daily_limit?: number
           gift_enabled?: boolean
@@ -450,7 +453,15 @@ export type Database = {
           tracking_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bets_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       broadcasts: {
         Row: {
@@ -1261,7 +1272,15 @@ export type Database = {
           usage_limit?: number
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promo_code_requests_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promo_code_usage_v2: {
         Row: {
@@ -1549,7 +1568,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       teams: {
         Row: {
@@ -1606,6 +1633,13 @@ export type Database = {
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_messages_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1710,7 +1744,15 @@ export type Database = {
           title?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_challenge_progress: {
         Row: {
@@ -1833,7 +1875,15 @@ export type Database = {
           title?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_tasks_user_profile_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       virtual_house_transactions: {
         Row: {
