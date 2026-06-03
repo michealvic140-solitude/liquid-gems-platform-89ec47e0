@@ -1873,7 +1873,7 @@ function TicketsPanel() {
   const [active, setActive] = useState<any | null>(null);
   const confirm = useConfirm();
   async function load() {
-    const { data } = await supabase.from("support_tickets").select("*, profiles!user_id(full_name,email)").order("created_at", { ascending: false }).limit(200);
+    const { data } = await supabase.from("support_tickets").select("*, profiles!support_tickets_user_profile_fkey(full_name,email)").order("created_at", { ascending: false }).limit(200);
     setTickets(data ?? []);
   }
   useEffect(() => {
@@ -1927,7 +1927,7 @@ function AdminTicketDialog({ ticket, onClose }: { ticket: any; onClose: () => vo
   const fileRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   async function load() {
-    const { data } = await supabase.from("ticket_messages").select("*, profiles!user_id(full_name,email)").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
+    const { data } = await supabase.from("ticket_messages").select("*, profiles!ticket_messages_user_profile_fkey(full_name,email)").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
     setMsgs(data ?? []);
   }
   useEffect(() => {
@@ -3028,7 +3028,7 @@ function BetTrackerPanel() {
 
   async function load() {
     let qb = supabase.from("bets")
-      .select("*, profiles!user_id(full_name,email,ingame_name), bet_selections(*, matches!match_id(name))")
+      .select("*, profiles!bets_user_profile_fkey(full_name,email,ingame_name), bet_selections(*, matches!match_id(name))")
       .order("created_at", { ascending: false }).limit(200);
     if (filter !== "all") qb = qb.eq("status", filter as any);
     const { data } = await qb;
@@ -3164,8 +3164,8 @@ function TasksAchievementsPanel() {
   async function load() {
     const [{ data: u }, { data: t }, { data: a }] = await Promise.all([
       supabase.from("profiles").select("id,full_name,email").order("created_at", { ascending: false }).limit(500),
-      supabase.from("user_tasks").select("*, profiles!user_id(full_name,email)").order("created_at", { ascending: false }).limit(200),
-      supabase.from("user_achievements").select("*, profiles!user_id(full_name,email)").order("awarded_at", { ascending: false }).limit(200),
+      supabase.from("user_tasks").select("*, profiles!user_tasks_user_profile_fkey(full_name,email)").order("created_at", { ascending: false }).limit(200),
+      supabase.from("user_achievements").select("*, profiles!user_achievements_user_profile_fkey(full_name,email)").order("awarded_at", { ascending: false }).limit(200),
     ]);
     setUsers(u ?? []); setTasks(t ?? []); setAchievements(a ?? []);
   }
