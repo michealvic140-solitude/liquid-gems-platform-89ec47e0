@@ -4,11 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import Autoplay from "embla-carousel-autoplay";
 import { Megaphone, Film } from "lucide-react";
+import { withResolvedMedia } from "@/lib/storage-media";
 
 export function AnnouncementSlider() {
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
-    (supabase as any).from("announcements_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(10).then(({ data }: any) => setItems(data ?? []));
+    (supabase as any).from("announcements_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(10).then(async ({ data }: any) => setItems(await withResolvedMedia(data ?? [], "announcements", "image_url", "image_signed_url")));
   }, []);
   if (items.length === 0) return null;
   return (
@@ -38,7 +39,7 @@ export function AnnouncementSlider() {
 export function HighlightsRow() {
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
-    (supabase as any).from("highlights_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(12).then(({ data }: any) => setItems(data ?? []));
+    (supabase as any).from("highlights_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(12).then(async ({ data }: any) => setItems(await withResolvedMedia(data ?? [], "highlights", "media_url", "media_signed_url")));
   }, []);
   if (items.length === 0) return null;
   return (
@@ -67,7 +68,7 @@ export function HighlightsRow() {
 export function AdsRow() {
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => {
-    (supabase as any).from("advertisements_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(8).then(({ data }: any) => setItems(data ?? []));
+    (supabase as any).from("advertisements_public").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(8).then(async ({ data }: any) => setItems(await withResolvedMedia(data ?? [], "ads", "image_url", "image_signed_url")));
   }, []);
   if (items.length === 0) return null;
   return (
