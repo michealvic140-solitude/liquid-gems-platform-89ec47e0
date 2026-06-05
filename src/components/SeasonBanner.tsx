@@ -20,7 +20,7 @@ export function SeasonBanner() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: s } = await supabase.from("seasons").select("*").eq("is_active", true).order("starts_at", { ascending: false }).limit(1).maybeSingle();
+        const { data: s } = await (supabase as any).from("seasons_public").select("*").eq("is_active", true).order("starts_at", { ascending: false }).limit(1).maybeSingle();
       setSeason(s);
       if (s) {
         const { data: pts } = await supabase.from("season_points").select("*, profiles:user_id(full_name, ingame_name, gang_name)").eq("season_id", (s as any).id).order("points", { ascending: false }).limit(5);
@@ -44,7 +44,7 @@ export function SeasonBanner() {
   return (
     <section className="container mt-6">
       <Card className="glass-strong overflow-hidden border-primary/40">
-        {season.banner_url && <img src={season.banner_url} alt="" className="w-full h-32 object-cover opacity-60" />}
+        {(season.banner_signed_url || season.banner_url) && <img src={season.banner_signed_url || season.banner_url} alt="" className="w-full h-32 object-cover opacity-60" />}
         <div className="p-5 grid md:grid-cols-[1fr_auto] gap-4 items-center">
           <div>
             <Badge variant="outline" className="border-primary/40 text-primary mb-2">
