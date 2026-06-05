@@ -2584,8 +2584,8 @@ function AnalyticsPanel() {
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-[9px] sm:text-xs font-bold text-foreground truncate">{event.title}</div>
-                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at ?? event.starts_at} /></div>
-                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.starts_at ?? event.ends_at).toLocaleString()}</div>
+                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at} /></div>
+                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.ends_at).toLocaleString()}</div>
               </div>
             </button>
           ) : (
