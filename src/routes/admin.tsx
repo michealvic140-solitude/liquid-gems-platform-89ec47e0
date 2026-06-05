@@ -1410,7 +1410,7 @@ function EventsPanel() {
   const [draft, setDraft] = useState({ title: "", description: "", ends_at: "", banner: null as File | null });
 
   async function load() {
-    const { data } = await supabase.from("events").select("*").order("ends_at", { ascending: true });
+    const { data } = await (supabase as any).from("events_public").select("*").order("ends_at", { ascending: true });
     setEvents(data ?? []);
   }
   useEffect(() => { load(); }, []);
@@ -1419,10 +1419,8 @@ function EventsPanel() {
     if (!draft.title || !draft.ends_at) { toast.error("Title and end time required"); return; }
     let banner_url: string | null = null;
     if (draft.banner) {
-      const path = `event-${crypto.randomUUID()}.${draft.banner.name.split(".").pop()}`;
-      const { error } = await supabase.storage.from("announcements").upload(path, draft.banner);
-      if (error) { toast.error(error.message); return; }
-      banner_url = supabase.storage.from("announcements").getPublicUrl(path).data.publicUrl;
+      try { banner_url = await uploadStoragePath("event-banners", "event", draft.banner); }
+      catch (e: any) { toast.error(e.message); return; }
     }
     const { error } = await supabase.from("events").insert({ title: draft.title, description: draft.description, banner_url, ends_at: new Date(draft.ends_at).toISOString() });
     if (error) toast.error(error.message);
@@ -1458,7 +1456,7 @@ function EventsPanel() {
       <div className="space-y-2">
         {events.map((e) => (
           <Card key={e.id} className="glass p-3 flex items-center gap-3 flex-wrap">
-            {e.banner_url && <img src={e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
+            {(e.banner_signed_url || e.banner_url) && <img src={e.banner_signed_url || e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
             <div className="flex-1 min-w-0">
               <div className="font-bold truncate">{e.title}</div>
               <div className="text-xs text-muted-foreground">Ends {new Date(e.ends_at).toLocaleString()}</div>
