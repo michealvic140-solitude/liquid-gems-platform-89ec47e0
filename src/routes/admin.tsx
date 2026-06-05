@@ -205,6 +205,14 @@ async function logAudit(action: string, target_type: string, target_id?: string,
   if (error) console.warn("audit log failed", error.message);
 }
 
+async function uploadStoragePath(bucket: string, prefix: string, file: File) {
+  const ext = file.name.split(".").pop() || "bin";
+  const path = `${prefix}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) throw error;
+  return path;
+}
+
 function AdminTab({ icon: Icon, label, count = 0 }: { icon: any; label: string; count?: number }) {
   return (
     <span className="relative inline-flex items-center gap-1">
