@@ -1803,14 +1803,13 @@ function HighlightsPanel() {
 function AdsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", link_url: "", file: null as File | null });
-  async function load() { setList((await supabase.from("advertisements").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() { setList((await (supabase as any).from("advertisements_public").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.file) { toast.error("Image required"); return; }
-    const path = `ad-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("ads").upload(path, draft.file);
-    if (error) { toast.error(error.message); return; }
-    const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+    let url = "";
+    try { url = await uploadStoragePath("ads", "ad", draft.file); }
+    catch (e: any) { toast.error(e.message); return; }
     await supabase.from("advertisements").insert({ title: draft.title, image_url: url, link_url: draft.link_url || null });
     setDraft({ title: "", link_url: "", file: null }); load();
   }
@@ -1827,7 +1826,7 @@ function AdsPanel() {
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map((a) => (
           <Card key={a.id} className="glass p-2">
-            <img src={a.image_url} className="w-full h-32 object-cover rounded" alt="" />
+            <img src={a.image_signed_url || a.image_url} className="w-full h-32 object-cover rounded" alt="" />
             <div className="font-bold text-sm mt-1 truncate">{a.title}</div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
