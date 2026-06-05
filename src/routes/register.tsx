@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,12 @@ function RegisterPage() {
   });
   const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setF((p) => ({ ...p, referral_code: ref.trim().toUpperCase() }));
+  }, []);
 
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
 
