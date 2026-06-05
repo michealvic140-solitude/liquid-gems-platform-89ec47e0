@@ -34,7 +34,7 @@ export function EventBanner() {
         .eq("is_active", true)
         .gt("ends_at", new Date().toISOString())
         .order("ends_at", { ascending: true });
-      setEvents((data ?? []) as EventRow[]);
+      setEvents((data ?? []) as unknown as EventRow[]);
     };
     load();
     setNow(Date.now());
