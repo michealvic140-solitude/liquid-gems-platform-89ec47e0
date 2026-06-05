@@ -1726,16 +1726,14 @@ function ContentPanel() {
 function AnnouncementsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", body: "", file: null as File | null });
-  async function load() { setList((await supabase.from("announcements").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() { setList((await (supabase as any).from("announcements_public").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title) return;
     let image_url: string | null = null;
     if (draft.file) {
-      const path = `ann-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-      const { error } = await supabase.storage.from("announcements").upload(path, draft.file);
-      if (error) { toast.error(error.message); return; }
-      image_url = supabase.storage.from("announcements").getPublicUrl(path).data.publicUrl;
+      try { image_url = await uploadStoragePath("announcements", "ann", draft.file); }
+      catch (e: any) { toast.error(e.message); return; }
     }
     const { error } = await supabase.from("announcements").insert({ title: draft.title, body: draft.body, image_url });
     if (error) toast.error(error.message); else { setDraft({ title: "", body: "", file: null }); load(); logAudit("announcement_created", "announcement"); }
@@ -1753,7 +1751,7 @@ function AnnouncementsPanel() {
       </Card>
       {list.map((a) => (
         <Card key={a.id} className="glass p-3 flex items-center justify-between gap-3">
-          {a.image_url && <img src={a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
+          {(a.image_signed_url || a.image_url) && <img src={a.image_signed_url || a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
           <div className="min-w-0 flex-1"><div className="font-bold truncate">{a.title}</div><div className="text-xs text-muted-foreground truncate">{a.body}</div></div>
           <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
           <Button size="sm" variant="destructive" onClick={() => del(a.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -1766,14 +1764,13 @@ function AnnouncementsPanel() {
 function HighlightsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", file: null as File | null });
-  async function load() { setList((await supabase.from("highlights").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() { setList((await (supabase as any).from("highlights_public").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title || !draft.file) { toast.error("Title and media required"); return; }
-    const path = `hl-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("highlights").upload(path, draft.file);
-    if (error) { toast.error(error.message); return; }
-    const url = supabase.storage.from("highlights").getPublicUrl(path).data.publicUrl;
+    let url = "";
+    try { url = await uploadStoragePath("highlights", "hl", draft.file); }
+    catch (e: any) { toast.error(e.message); return; }
     const media_type = draft.file.type.startsWith("video") ? "video" : "image";
     await supabase.from("highlights").insert({ title: draft.title, media_url: url, media_type });
     setDraft({ title: "", file: null }); load();
@@ -1790,7 +1787,7 @@ function HighlightsPanel() {
       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
         {list.map((h) => (
           <Card key={h.id} className="glass p-2">
-            {h.media_type === "video" ? <video src={h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
+            {h.media_type === "video" ? <video src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
             <div className="font-bold text-sm mt-1 truncate">{h.title}</div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(h.id, !h.is_active)}>{h.is_active ? "Hide" : "Show"}</Button>
