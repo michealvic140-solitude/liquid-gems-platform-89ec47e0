@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "lucide-react";
+import { withResolvedMedia } from "@/lib/storage-media";
 
 type EventRow = {
   id: string;
   title: string;
   description: string | null;
   banner_url: string | null;
+  banner_signed_url?: string | null;
   ends_at: string;
   is_active: boolean;
 };
@@ -28,12 +30,12 @@ export function EventBanner() {
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase
-        .from("events")
+        .from("events_public" as any)
         .select("*")
         .eq("is_active", true)
         .gt("ends_at", new Date().toISOString())
         .order("ends_at", { ascending: true });
-      setEvents((data ?? []) as EventRow[]);
+      setEvents(await withResolvedMedia((data ?? []) as unknown as EventRow[], "event-banners", "banner_url", "banner_signed_url") as EventRow[]);
     };
     load();
     setNow(Date.now());
@@ -53,8 +55,8 @@ export function EventBanner() {
         const left = now === null ? "--:--:--:--" : diff(now, target);
         return (
           <Card key={e.id} className="relative overflow-hidden border-primary/30 glass-strong">
-            {e.banner_url ? (
-              <img src={e.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />
+            {(e.banner_signed_url || e.banner_url) ? (
+              <img src={e.banner_signed_url || e.banner_url || ""} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-accent/10 to-primary/20" />
             )}

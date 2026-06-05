@@ -37,6 +37,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { SpotlightsAdminPanel } from "@/components/Spotlight";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { resolveStorageUrl, withResolvedMedia } from "@/lib/storage-media";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — LSL" }, { name: "description", content: "League administration dashboard." }] }),
@@ -59,7 +60,7 @@ function AdminPage() {
     if (!isAdmin) return;
     const loadAlerts = async () => {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [users, tokens, withdrawals, tickets, bets, promos, appeals, chat] = await Promise.all([
+      const [users, tokens, withdrawals, tickets, bets, promos, appeals] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -67,9 +68,8 @@ function AdminPage() {
         supabase.from("bets").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("chat_messages").select("id", { count: "exact", head: true }).gte("created_at", since),
       ]);
-      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0, chat: chat.count ?? 0 });
+      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0 });
     };
     loadAlerts();
     const ch = supabase.channel("admin-alert-indicators")
@@ -81,7 +81,6 @@ function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "bets" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "promo_code_requests" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "ban_appeals" }, loadAlerts)
-      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, loadAlerts)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [isAdmin]);
@@ -162,7 +161,6 @@ function AdminPage() {
             <TabsContent value="bettracker" className="mt-4"><BetTrackerPanel /></TabsContent>
             <TabsContent value="promoreqs" className="mt-4"><PromoRequestsPanel /></TabsContent>
             <TabsContent value="appeals" className="mt-4"><AppealsPanel /></TabsContent>
-            <TabsContent value="chat" className="mt-4"><ChatMonitorPanel /></TabsContent>
             <TabsContent value="notify" className="mt-4"><NotifyPanel /></TabsContent>
             <TabsContent value="audit" className="mt-4"><AuditPanel /></TabsContent>
             <TabsContent value="analytics" className="mt-4"><AnalyticsPanel /></TabsContent>
@@ -206,6 +204,14 @@ async function logAudit(action: string, target_type: string, target_id?: string,
     _metadata: enriched,
   });
   if (error) console.warn("audit log failed", error.message);
+}
+
+async function uploadStoragePath(bucket: string, prefix: string, file: File) {
+  const ext = file.name.split(".").pop() || "bin";
+  const path = `${prefix}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) throw error;
+  return path;
 }
 
 function AdminTab({ icon: Icon, label, count = 0 }: { icon: any; label: string; count?: number }) {
@@ -1405,8 +1411,8 @@ function EventsPanel() {
   const [draft, setDraft] = useState({ title: "", description: "", ends_at: "", banner: null as File | null });
 
   async function load() {
-    const { data } = await supabase.from("events").select("*").order("ends_at", { ascending: true });
-    setEvents(data ?? []);
+    const { data } = await (supabase as any).from("events_public").select("*").order("ends_at", { ascending: true });
+    setEvents(await withResolvedMedia((data ?? []) as any[], "event-banners", "banner_url", "banner_signed_url"));
   }
   useEffect(() => { load(); }, []);
 
@@ -1414,10 +1420,8 @@ function EventsPanel() {
     if (!draft.title || !draft.ends_at) { toast.error("Title and end time required"); return; }
     let banner_url: string | null = null;
     if (draft.banner) {
-      const path = `event-${crypto.randomUUID()}.${draft.banner.name.split(".").pop()}`;
-      const { error } = await supabase.storage.from("announcements").upload(path, draft.banner);
-      if (error) { toast.error(error.message); return; }
-      banner_url = supabase.storage.from("announcements").getPublicUrl(path).data.publicUrl;
+      try { banner_url = await uploadStoragePath("event-banners", "event", draft.banner); }
+      catch (e: any) { toast.error(e.message); return; }
     }
     const { error } = await supabase.from("events").insert({ title: draft.title, description: draft.description, banner_url, ends_at: new Date(draft.ends_at).toISOString() });
     if (error) toast.error(error.message);
@@ -1453,7 +1457,7 @@ function EventsPanel() {
       <div className="space-y-2">
         {events.map((e) => (
           <Card key={e.id} className="glass p-3 flex items-center gap-3 flex-wrap">
-            {e.banner_url && <img src={e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
+            {(e.banner_signed_url || e.banner_url) && <img src={e.banner_signed_url || e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
             <div className="flex-1 min-w-0">
               <div className="font-bold truncate">{e.title}</div>
               <div className="text-xs text-muted-foreground">Ends {new Date(e.ends_at).toLocaleString()}</div>
@@ -1723,16 +1727,17 @@ function ContentPanel() {
 function AnnouncementsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", body: "", file: null as File | null });
-  async function load() { setList((await supabase.from("announcements").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("announcements_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "announcements", "image_url", "image_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title) return;
     let image_url: string | null = null;
     if (draft.file) {
-      const path = `ann-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-      const { error } = await supabase.storage.from("announcements").upload(path, draft.file);
-      if (error) { toast.error(error.message); return; }
-      image_url = supabase.storage.from("announcements").getPublicUrl(path).data.publicUrl;
+      try { image_url = await uploadStoragePath("announcements", "ann", draft.file); }
+      catch (e: any) { toast.error(e.message); return; }
     }
     const { error } = await supabase.from("announcements").insert({ title: draft.title, body: draft.body, image_url });
     if (error) toast.error(error.message); else { setDraft({ title: "", body: "", file: null }); load(); logAudit("announcement_created", "announcement"); }
@@ -1750,7 +1755,7 @@ function AnnouncementsPanel() {
       </Card>
       {list.map((a) => (
         <Card key={a.id} className="glass p-3 flex items-center justify-between gap-3">
-          {a.image_url && <img src={a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
+          {(a.image_signed_url || a.image_url) && <img src={a.image_signed_url || a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
           <div className="min-w-0 flex-1"><div className="font-bold truncate">{a.title}</div><div className="text-xs text-muted-foreground truncate">{a.body}</div></div>
           <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
           <Button size="sm" variant="destructive" onClick={() => del(a.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -1763,14 +1768,16 @@ function AnnouncementsPanel() {
 function HighlightsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", file: null as File | null });
-  async function load() { setList((await supabase.from("highlights").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("highlights_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "highlights", "media_url", "media_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title || !draft.file) { toast.error("Title and media required"); return; }
-    const path = `hl-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("highlights").upload(path, draft.file);
-    if (error) { toast.error(error.message); return; }
-    const url = supabase.storage.from("highlights").getPublicUrl(path).data.publicUrl;
+    let url = "";
+    try { url = await uploadStoragePath("highlights", "hl", draft.file); }
+    catch (e: any) { toast.error(e.message); return; }
     const media_type = draft.file.type.startsWith("video") ? "video" : "image";
     await supabase.from("highlights").insert({ title: draft.title, media_url: url, media_type });
     setDraft({ title: "", file: null }); load();
@@ -1787,7 +1794,7 @@ function HighlightsPanel() {
       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
         {list.map((h) => (
           <Card key={h.id} className="glass p-2">
-            {h.media_type === "video" ? <video src={h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
+            {h.media_type === "video" ? <video src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
             <div className="font-bold text-sm mt-1 truncate">{h.title}</div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(h.id, !h.is_active)}>{h.is_active ? "Hide" : "Show"}</Button>
@@ -1803,14 +1810,16 @@ function HighlightsPanel() {
 function AdsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", link_url: "", file: null as File | null });
-  async function load() { setList((await supabase.from("advertisements").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("advertisements_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "ads", "image_url", "image_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.file) { toast.error("Image required"); return; }
-    const path = `ad-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("ads").upload(path, draft.file);
-    if (error) { toast.error(error.message); return; }
-    const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+    let url = "";
+    try { url = await uploadStoragePath("ads", "ad", draft.file); }
+    catch (e: any) { toast.error(e.message); return; }
     await supabase.from("advertisements").insert({ title: draft.title, image_url: url, link_url: draft.link_url || null });
     setDraft({ title: "", link_url: "", file: null }); load();
   }
@@ -1827,7 +1836,7 @@ function AdsPanel() {
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map((a) => (
           <Card key={a.id} className="glass p-2">
-            <img src={a.image_url} className="w-full h-32 object-cover rounded" alt="" />
+            <img src={a.image_signed_url || a.image_url} className="w-full h-32 object-cover rounded" alt="" />
             <div className="font-bold text-sm mt-1 truncate">{a.title}</div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
@@ -2121,7 +2130,7 @@ function AuditPanel() {
   const [q, setQ] = useState("");
   const [actionFilter, setActionFilter] = useState<string>("all");
 
-  useEffect(() => {
+  const load = async () => {
     supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500).then(async ({ data }) => {
       setLogs(data ?? []);
       const ids = new Set<string>();
@@ -2138,6 +2147,12 @@ function AuditPanel() {
         setProfiles(m);
       }
     });
+  };
+
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("admin-audit-live").on("postgres_changes", { event: "*", schema: "public", table: "audit_logs" }, load).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, []);
 
   const filtered = useMemo(() => {
@@ -2198,22 +2213,25 @@ function AuditPanel() {
                 <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${dotCls} shadow-[0_0_10px_currentColor]`} />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-bold text-primary">{actor?.full_name ?? "System"}</span>
+                    <span className="font-bold text-primary">{l.actor_name ?? meta.actor_name ?? actor?.full_name ?? "System"}</span>
+                    {(l.actor_role || meta.actor_role) && <Badge variant="outline" className="text-[9px] uppercase">{l.actor_role || meta.actor_role}</Badge>}
                     <span className="text-muted-foreground">{action}</span>
                     <span className="text-muted-foreground">on</span>
                     <Badge variant="outline" className="capitalize">{l.target_type ?? "—"}</Badge>
-                    {targetUser && (
+                    {(targetUser || l.target_name || meta.target_name) && (
                       <>
                         <span className="text-muted-foreground">→</span>
-                        <span className="font-bold text-emerald-300">{targetUser.full_name}</span>
+                        <span className="font-bold text-emerald-300">{targetUser?.full_name ?? l.target_name ?? meta.target_name}</span>
                       </>
                     )}
                   </div>
                   <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {actor?.email && <Detail icon={Users} label="By"><span className="font-mono">{actor.email}</span></Detail>}
+                    {(l.actor_email || meta.actor_email || actor?.email) && <Detail icon={Users} label="By"><span className="font-mono">{l.actor_email || meta.actor_email || actor?.email}</span></Detail>}
                     {targetUser?.email && <Detail icon={Users} label="To"><span className="font-mono">{targetUser.email}</span></Detail>}
                     {l.target_id && l.target_type !== "user" && <Detail icon={Tag} label="Target ID"><span className="font-mono break-all">{l.target_id}</span></Detail>}
+                    {(l.reason || meta.reason) && <Detail icon={AlertTriangle} label="Reason"><span>{l.reason || meta.reason}</span></Detail>}
                     {meta.route && <Detail icon={MapPin} label="From route"><span className="font-mono">{meta.route}</span></Detail>}
+                    {l.source && <Detail icon={Sparkles} label="Source"><span className="font-mono">{l.source}</span></Detail>}
                     {meta.origin && <Detail icon={Globe} label="Origin"><span className="font-mono">{meta.origin}</span></Detail>}
                     {meta.user_agent && <Detail icon={Smartphone} label="Device"><span className="font-mono truncate inline-block max-w-[260px] align-bottom">{summariseUA(meta.user_agent)}</span></Detail>}
                     <Detail icon={Clock} label="When"><span title={ts.toISOString()}>{ts.toLocaleString()} <span className="text-muted-foreground">({timeAgo(ts)})</span></span></Detail>
@@ -2335,7 +2353,7 @@ function AnalyticsPanel() {
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
         supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
-        supabase.from("events").select("id,title,banner_url,starts_at,ends_at,is_active").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
+        (supabase as any).from("events_public").select("id,title,banner_url,banner_signed_url,ends_at,is_active").eq("is_active", true).order("ends_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
@@ -2368,7 +2386,7 @@ function AnalyticsPanel() {
       });
       setLiveMatches(m.data ?? []);
       setBroadcasts(br.data ?? []);
-      setEvent(ev.data ?? null);
+      setEvent(ev.data ? { ...ev.data, banner_signed_url: await resolveStorageUrl("event-banners", (ev.data as any).banner_url) } : null);
 
       const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
       const today = new Date(); today.setHours(0,0,0,0);
@@ -2389,8 +2407,8 @@ function AnalyticsPanel() {
 
       const { data: aud } = await supabase.from("audit_logs").select("action,target_type,created_at,metadata").order("created_at", { ascending: false }).limit(6);
       setActivity(aud ?? []);
-      const { data: hl } = await supabase.from("highlights").select("id,title,media_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
-      setHighlights(hl ?? []);
+      const { data: hl } = await (supabase as any).from("highlights_public").select("id,title,media_url,media_signed_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
+      setHighlights(await withResolvedMedia((hl ?? []) as any[], "highlights", "media_url", "media_signed_url"));
     })();
   }, []);
 
@@ -2560,14 +2578,14 @@ function AnalyticsPanel() {
           {event ? (
             <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-amber-500/10 rounded p-1 transition flex gap-1.5 items-center">
               {event.banner_url ? (
-                <img src={event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
+                <img src={event.banner_signed_url || event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
               ) : (
                 <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-md bg-amber-500/20 grid place-items-center border border-amber-500/40 shrink-0"><Calendar className="h-4 w-4 text-amber-300" /></div>
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-[9px] sm:text-xs font-bold text-foreground truncate">{event.title}</div>
-                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at ?? event.starts_at} /></div>
-                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.starts_at ?? event.ends_at).toLocaleString()}</div>
+                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at} /></div>
+                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.ends_at).toLocaleString()}</div>
               </div>
             </button>
           ) : (
@@ -2597,7 +2615,6 @@ function AnalyticsPanel() {
                 { i: ClipboardList, l: "Bet Tracker", t: "bettracker" },
                 { i: Send, l: "Broadcast", t: "broadcast" },
                 { i: Sparkles, l: "Challenges", t: "challenges" },
-                { i: MessageSquare, l: "Chat", t: "chat" },
                 { i: Megaphone, l: "Content", t: "content" },
                 { i: Trophy, l: "Emblems", t: "emblems" },
                 { i: Calendar, l: "Events", t: "events" },
@@ -2944,25 +2961,26 @@ function LeaderboardAdminPanel() {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  async function clearAll() {
+  async function clearScope(scope: "gang_faction" | "shooters" | "hall_of_fame", label: string) {
     if (!await confirm({
-      title: `Reset the entire leaderboard?`,
-      description: "This wipes all season points AND manual overrides. Auto-computed stats will start fresh from real (non-virtual) matches.",
-      tone: "danger", confirmText: "Clear leaderboard",
+      title: `Wipe ${label}?`,
+      description: "This clears that leaderboard area so it can start fresh.",
+      tone: "danger", confirmText: `Wipe ${label}`,
     })) return;
-    const { error } = await supabase.rpc("admin_clear_leaderboard" as any);
+    const { error } = await supabase.rpc("admin_clear_leaderboard_scope" as any, { _scope: scope });
     if (error) { toast.error(error.message); return; }
-    await logAudit("leaderboard_clear_all", "leaderboard_overrides", undefined, { previous_count: list.length });
-    toast.success("Leaderboard fully reset");
+    toast.success(`${label} wiped`);
     load();
   }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs text-muted-foreground">{list.length} manual override{list.length === 1 ? "" : "s"}</div>
-        <Button variant="destructive" size="sm" onClick={clearAll} disabled={list.length === 0}>
-          <Trash2 className="h-3 w-3 mr-1" />Reset Leaderboard
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="destructive" size="sm" onClick={() => clearScope("gang_faction", "Gang & Faction")}><Trash2 className="h-3 w-3 mr-1" />Gang & Faction</Button>
+          <Button variant="destructive" size="sm" onClick={() => clearScope("shooters", "Shooters")}><Trash2 className="h-3 w-3 mr-1" />Shooters</Button>
+          <Button variant="destructive" size="sm" onClick={() => clearScope("hall_of_fame", "Hall of Fame")}><Trash2 className="h-3 w-3 mr-1" />Hall of Fame</Button>
+        </div>
       </div>
       <Card className="glass-strong p-4 space-y-2">
         <div className="font-bold flex items-center gap-2">
@@ -3173,7 +3191,7 @@ function TasksAchievementsPanel() {
   async function createTask() {
     if (!draft.user_id || !draft.title) { toast.error("Pick a user and enter a task title"); return; }
     const { error } = await supabase.from("user_tasks").insert({ user_id: draft.user_id, title: draft.title, description: draft.description || null, reward_tokens: draft.reward_tokens || 0 });
-    if (error) toast.error(error.message); else { toast.success("Task assigned"); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0 }); load(); }
+    if (error) toast.error(error.message); else { await logAudit("task_assigned", "user_task", undefined, { target_user_id: draft.user_id, target_name: draft.title, reward_tokens: draft.reward_tokens }); toast.success("Task assigned"); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0 }); load(); }
   }
   async function markDone(task: any) {
     await supabase.from("user_tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", task.id);
@@ -3182,6 +3200,7 @@ function TasksAchievementsPanel() {
       if (p) await supabase.from("profiles").update({ token_balance: (p.token_balance ?? 0) + task.reward_tokens }).eq("id", task.user_id);
     }
     await supabase.from("notifications").insert({ user_id: task.user_id, title: "Task completed", body: `${task.title}${task.reward_tokens ? ` · +${task.reward_tokens} tokens` : ""}` });
+    await logAudit("task_completed", "user_task", task.id, { target_user_id: task.user_id, target_name: task.title, reward_tokens: task.reward_tokens });
     toast.success("Task completed"); load();
   }
   async function awardAchievement() {
@@ -3192,12 +3211,14 @@ function TasksAchievementsPanel() {
     });
     if (error) { toast.error(error.message); return; }
     await supabase.from("notifications").insert({ user_id: ach.user_id, title: "Achievement unlocked! 🏆", body: `${ach.icon} ${ach.title}` });
+    await logAudit("achievement_awarded", "achievement", undefined, { target_user_id: ach.user_id, target_name: ach.title, code: ach.code });
     toast.success("Achievement awarded");
     setAch({ user_id: "", code: "", title: "", description: "", icon: "🏆" });
     load();
   }
   async function revokeAchievement(id: string) {
     await supabase.from("user_achievements").delete().eq("id", id);
+    await logAudit("achievement_revoked", "achievement", id);
     toast.success("Revoked"); load();
   }
   return (
@@ -3764,18 +3785,23 @@ function ChallengesAdminPanel() {
 
 function SeasonsAdminPanel() {
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({ name: "", description: "", banner_url: "", starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
+  const [form, setForm] = useState<any>({ name: "", description: "", banner_file: null as File | null, starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
   const load = async () => {
-    const { data } = await supabase.from("seasons").select("*").order("starts_at", { ascending: false });
-    setList(data ?? []);
+    const { data } = await (supabase as any).from("seasons_public").select("*").order("starts_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "season-banners", "banner_url", "banner_signed_url"));
   };
   useEffect(() => { load(); }, []);
   async function save() {
     if (!form.name) return toast.error("Name required");
-    const { error } = await supabase.from("seasons").insert({ ...form, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString() });
+    let banner_url: string | null = null;
+    if (form.banner_file) {
+      try { banner_url = await uploadStoragePath("season-banners", "season", form.banner_file); }
+      catch (e: any) { toast.error(e.message); return; }
+    }
+    const { error } = await supabase.from("seasons").insert({ name: form.name, description: form.description || null, banner_url, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString(), is_active: form.is_active });
     if (error) return toast.error(error.message);
     toast.success("Season created");
-    setForm({ ...form, name: "", description: "" });
+    setForm({ ...form, name: "", description: "", banner_file: null });
     load();
   }
   async function toggle(s: any) {
@@ -3794,7 +3820,7 @@ function SeasonsAdminPanel() {
         <div className="font-bold">Create Season</div>
         <div className="grid md:grid-cols-2 gap-2">
           <Input placeholder="Season name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input placeholder="Banner URL (optional)" value={form.banner_url} onChange={(e) => setForm({ ...form, banner_url: e.target.value })} />
+          <Input type="file" accept="image/*" onChange={(e) => setForm({ ...form, banner_file: e.target.files?.[0] ?? null })} />
           <Input type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
           <Input type="datetime-local" value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} />
         </div>
@@ -3804,6 +3830,7 @@ function SeasonsAdminPanel() {
       <div className="space-y-2">
         {list.map((s) => (
           <Card key={s.id} className="p-3 flex items-center justify-between gap-3">
+            {(s.banner_signed_url || s.banner_url) && <img src={s.banner_signed_url || s.banner_url} alt="" className="h-12 w-20 rounded object-cover border border-border" />}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2"><Badge variant="outline" className={s.is_active ? "border-emerald-500/50 text-emerald-300" : ""}>{s.is_active ? "ACTIVE" : "INACTIVE"}</Badge><span className="font-bold">{s.name}</span></div>
               <div className="text-xs text-muted-foreground">{new Date(s.starts_at).toLocaleDateString()} → {new Date(s.ends_at).toLocaleDateString()}</div>

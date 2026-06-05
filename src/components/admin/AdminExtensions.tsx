@@ -740,6 +740,8 @@ export function ReferralsAdminPanel() {
   const [s, setS] = useState<any>(null);
   const [list, setList] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, any>>({});
+  const [userQuery, setUserQuery] = useState("");
+  const [inviteUsers, setInviteUsers] = useState<any[]>([]);
 
   async function load() {
     const { data: settings } = await supabase
@@ -758,6 +760,16 @@ export function ReferralsAdminPanel() {
     }
   }
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!userQuery.trim()) { setInviteUsers([]); return; }
+    const t = setTimeout(async () => {
+      const q = userQuery.trim();
+      const { data } = await supabase.from("profiles").select("id,full_name,ingame_name,email,referral_code").or(`full_name.ilike.%${q}%,ingame_name.ilike.%${q}%,email.ilike.%${q}%`).limit(10);
+      setInviteUsers(data ?? []);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [userQuery]);
 
   async function save() {
     const payload = {
@@ -793,6 +805,29 @@ export function ReferralsAdminPanel() {
           </div>
         </div>
         <Button onClick={save} className="btn-luxury">Save</Button>
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <div className="font-bold">Send invite link or code</div>
+        <Input placeholder="Search existing member to use their referral code" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
+        <div className="space-y-2 max-h-72 overflow-y-auto">
+          {inviteUsers.length === 0 && <p className="text-xs text-muted-foreground">Search a referrer by name or email.</p>}
+          {inviteUsers.map((u) => {
+            const code = u.referral_code || `LSL-${String(u.id).replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+            const link = typeof window !== "undefined" ? `${window.location.origin}/register?ref=${encodeURIComponent(code)}` : code;
+            return (
+              <div key={u.id} className="rounded-lg border border-border p-2 text-sm flex items-center gap-2 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold truncate">{u.ingame_name || u.full_name || u.email}</div>
+                  <div className="font-mono text-[11px] text-primary truncate">{code}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground truncate">{link}</div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(code); toast.success("Invite code copied"); }}>Copy code</Button>
+                <Button size="sm" className="btn-luxury" onClick={() => { navigator.clipboard.writeText(link); toast.success("Invite link copied"); }}>Copy link</Button>
+              </div>
+            );
+          })}
+        </div>
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
