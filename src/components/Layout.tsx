@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LogOut, User as UserIcon, Shield, MessageSquare, Home, Trophy, Ticket, LifeBuoy, Wallet, Crosshair as MatchIcon, Settings as SettingsIcon, Coins, LayoutDashboard, Dice5 } from "lucide-react";
+import { LogOut, User as UserIcon, Shield, Home, Trophy, Ticket, LifeBuoy, Wallet, Crosshair as MatchIcon, Settings as SettingsIcon, Coins, LayoutDashboard, Dice5 } from "lucide-react";
 import { GangLogo } from "@/components/GangLogo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,40 +8,12 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { LevelUpModal } from "@/components/Spotlight";
 import { ReactNode, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useLocation } from "@tanstack/react-router";
-
-const CHAT_SEEN_KEY = "lsl-chat-last-seen";
 
 // Push notifications skipped in this build — no service worker registration.
-
-function useChatUnread() {
-  const { user } = useAuth();
-  const loc = useLocation();
-  const [unread, setUnread] = useState(0);
-
-  useEffect(() => {
-    if (!user) { setUnread(0); return; }
-    const onChat = loc.pathname === "/chat";
-    if (onChat) { localStorage.setItem(CHAT_SEEN_KEY, new Date().toISOString()); setUnread(0); return; }
-    const since = localStorage.getItem(CHAT_SEEN_KEY) || new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    let cancelled = false;
-    supabase.from("chat_messages").select("id", { count: "exact", head: true }).gt("created_at", since).neq("user_id", user.id)
-      .then(({ count }) => { if (!cancelled) setUnread(count ?? 0); });
-    const ch = supabase.channel("layout-chat-unread")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (p: any) => {
-        if ((p.new as any).user_id === user.id) return;
-        setUnread((n) => n + 1);
-      }).subscribe();
-    return () => { cancelled = true; supabase.removeChannel(ch); };
-  }, [user, loc.pathname]);
-
-  return unread;
-}
 
 export const Layout = ({ children }: { children: ReactNode }) => {
   const { user, profile, roles, isAdmin, isMod, signOut } = useAuth();
   const nav = useNavigate();
-  const chatUnread = useChatUnread();
   // service worker registration removed (push skipped)
 
   return (
@@ -63,7 +35,6 @@ export const Layout = ({ children }: { children: ReactNode }) => {
             <NavLink to="/matches" icon={MatchIcon} label="Matches" />
             <NavLink to="/virtual" icon={Dice5} label="Virtual" />
             <NavLink to="/leaderboard" icon={Trophy} label="Leaderboard" />
-            {user && <NavLink to="/chat" icon={MessageSquare} label="Chat" badge={chatUnread} />}
             {user && <NavLink to="/dashboard" icon={LayoutDashboard} label="Dashboard" />}
             {user && <NavLink to="/checkout" icon={Coins} label="Buy" />}
             {user && <NavLink to="/withdraw" icon={Wallet} label="Withdraw" />}
@@ -125,7 +96,6 @@ export const Layout = ({ children }: { children: ReactNode }) => {
             <MobLink to="/leaderboard" icon={Trophy} label="Top" />
             {user && <>
               <MobLink to="/dashboard" icon={Ticket} label="Bets" />
-              <MobLink to="/chat" icon={MessageSquare} label="Chat" badge={chatUnread} />
               <MobLink to="/profile" icon={UserIcon} label="Profile" />
               <MobLink to="/settings" icon={SettingsIcon} label="Settings" />
               <MobLink to="/support" icon={LifeBuoy} label="Help" />
