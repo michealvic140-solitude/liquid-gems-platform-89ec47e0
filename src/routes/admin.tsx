@@ -3763,18 +3763,23 @@ function ChallengesAdminPanel() {
 
 function SeasonsAdminPanel() {
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({ name: "", description: "", banner_url: "", starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
+  const [form, setForm] = useState<any>({ name: "", description: "", banner_file: null as File | null, starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
   const load = async () => {
-    const { data } = await supabase.from("seasons").select("*").order("starts_at", { ascending: false });
+    const { data } = await (supabase as any).from("seasons_public").select("*").order("starts_at", { ascending: false });
     setList(data ?? []);
   };
   useEffect(() => { load(); }, []);
   async function save() {
     if (!form.name) return toast.error("Name required");
-    const { error } = await supabase.from("seasons").insert({ ...form, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString() });
+    let banner_url: string | null = null;
+    if (form.banner_file) {
+      try { banner_url = await uploadStoragePath("season-banners", "season", form.banner_file); }
+      catch (e: any) { toast.error(e.message); return; }
+    }
+    const { error } = await supabase.from("seasons").insert({ name: form.name, description: form.description || null, banner_url, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString(), is_active: form.is_active });
     if (error) return toast.error(error.message);
     toast.success("Season created");
-    setForm({ ...form, name: "", description: "" });
+    setForm({ ...form, name: "", description: "", banner_file: null });
     load();
   }
   async function toggle(s: any) {
@@ -3793,7 +3798,7 @@ function SeasonsAdminPanel() {
         <div className="font-bold">Create Season</div>
         <div className="grid md:grid-cols-2 gap-2">
           <Input placeholder="Season name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input placeholder="Banner URL (optional)" value={form.banner_url} onChange={(e) => setForm({ ...form, banner_url: e.target.value })} />
+          <Input type="file" accept="image/*" onChange={(e) => setForm({ ...form, banner_file: e.target.files?.[0] ?? null })} />
           <Input type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
           <Input type="datetime-local" value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} />
         </div>
@@ -3803,6 +3808,7 @@ function SeasonsAdminPanel() {
       <div className="space-y-2">
         {list.map((s) => (
           <Card key={s.id} className="p-3 flex items-center justify-between gap-3">
+            {(s.banner_signed_url || s.banner_url) && <img src={s.banner_signed_url || s.banner_url} alt="" className="h-12 w-20 rounded object-cover border border-border" />}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2"><Badge variant="outline" className={s.is_active ? "border-emerald-500/50 text-emerald-300" : ""}>{s.is_active ? "ACTIVE" : "INACTIVE"}</Badge><span className="font-bold">{s.name}</span></div>
               <div className="text-xs text-muted-foreground">{new Date(s.starts_at).toLocaleDateString()} → {new Date(s.ends_at).toLocaleDateString()}</div>
