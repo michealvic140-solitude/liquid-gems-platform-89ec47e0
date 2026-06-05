@@ -2334,7 +2334,7 @@ function AnalyticsPanel() {
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
         supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
-        supabase.from("events").select("id,title,banner_url,starts_at,ends_at,is_active").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
+        (supabase as any).from("events_public").select("id,title,banner_url,banner_signed_url,starts_at,ends_at,is_active").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
@@ -2388,7 +2388,7 @@ function AnalyticsPanel() {
 
       const { data: aud } = await supabase.from("audit_logs").select("action,target_type,created_at,metadata").order("created_at", { ascending: false }).limit(6);
       setActivity(aud ?? []);
-      const { data: hl } = await supabase.from("highlights").select("id,title,media_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
+      const { data: hl } = await (supabase as any).from("highlights_public").select("id,title,media_url,media_signed_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
       setHighlights(hl ?? []);
     })();
   }, []);
@@ -2559,7 +2559,7 @@ function AnalyticsPanel() {
           {event ? (
             <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-amber-500/10 rounded p-1 transition flex gap-1.5 items-center">
               {event.banner_url ? (
-                <img src={event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
+                <img src={event.banner_signed_url || event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
               ) : (
                 <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-md bg-amber-500/20 grid place-items-center border border-amber-500/40 shrink-0"><Calendar className="h-4 w-4 text-amber-300" /></div>
               )}
