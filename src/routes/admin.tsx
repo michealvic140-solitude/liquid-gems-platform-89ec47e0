@@ -59,7 +59,7 @@ function AdminPage() {
     if (!isAdmin) return;
     const loadAlerts = async () => {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [users, tokens, withdrawals, tickets, bets, promos, appeals, chat] = await Promise.all([
+      const [users, tokens, withdrawals, tickets, bets, promos, appeals] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -67,9 +67,8 @@ function AdminPage() {
         supabase.from("bets").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("chat_messages").select("id", { count: "exact", head: true }).gte("created_at", since),
       ]);
-      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0, chat: chat.count ?? 0 });
+      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0 });
     };
     loadAlerts();
     const ch = supabase.channel("admin-alert-indicators")
@@ -81,7 +80,6 @@ function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "bets" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "promo_code_requests" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "ban_appeals" }, loadAlerts)
-      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, loadAlerts)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [isAdmin]);
@@ -162,7 +160,6 @@ function AdminPage() {
             <TabsContent value="bettracker" className="mt-4"><BetTrackerPanel /></TabsContent>
             <TabsContent value="promoreqs" className="mt-4"><PromoRequestsPanel /></TabsContent>
             <TabsContent value="appeals" className="mt-4"><AppealsPanel /></TabsContent>
-            <TabsContent value="chat" className="mt-4"><ChatMonitorPanel /></TabsContent>
             <TabsContent value="notify" className="mt-4"><NotifyPanel /></TabsContent>
             <TabsContent value="audit" className="mt-4"><AuditPanel /></TabsContent>
             <TabsContent value="analytics" className="mt-4"><AnalyticsPanel /></TabsContent>
