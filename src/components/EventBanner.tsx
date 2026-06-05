@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "lucide-react";
+import { withResolvedMedia } from "@/lib/storage-media";
 
 type EventRow = {
   id: string;
@@ -34,7 +35,7 @@ export function EventBanner() {
         .eq("is_active", true)
         .gt("ends_at", new Date().toISOString())
         .order("ends_at", { ascending: true });
-      setEvents((data ?? []) as unknown as EventRow[]);
+      setEvents(await withResolvedMedia((data ?? []) as unknown as EventRow[], "event-banners", "banner_url", "banner_signed_url") as EventRow[]);
     };
     load();
     setNow(Date.now());
