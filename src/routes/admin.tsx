@@ -37,6 +37,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { SpotlightsAdminPanel } from "@/components/Spotlight";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { resolveStorageUrl, withResolvedMedia } from "@/lib/storage-media";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — LSL" }, { name: "description", content: "League administration dashboard." }] }),
@@ -2343,7 +2344,7 @@ function AnalyticsPanel() {
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
         supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
-        (supabase as any).from("events_public").select("id,title,banner_url,banner_signed_url,starts_at,ends_at,is_active").eq("is_active", true).order("starts_at", { ascending: true }).limit(1).maybeSingle(),
+        (supabase as any).from("events_public").select("id,title,banner_url,banner_signed_url,ends_at,is_active").eq("is_active", true).order("ends_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
@@ -2376,7 +2377,7 @@ function AnalyticsPanel() {
       });
       setLiveMatches(m.data ?? []);
       setBroadcasts(br.data ?? []);
-      setEvent(ev.data ?? null);
+      setEvent(ev.data ? { ...ev.data, banner_signed_url: await resolveStorageUrl("event-banners", (ev.data as any).banner_url) } : null);
 
       const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
       const today = new Date(); today.setHours(0,0,0,0);
@@ -2398,7 +2399,7 @@ function AnalyticsPanel() {
       const { data: aud } = await supabase.from("audit_logs").select("action,target_type,created_at,metadata").order("created_at", { ascending: false }).limit(6);
       setActivity(aud ?? []);
       const { data: hl } = await (supabase as any).from("highlights_public").select("id,title,media_url,media_signed_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
-      setHighlights(hl ?? []);
+      setHighlights(await withResolvedMedia((hl ?? []) as any[], "highlights", "media_url", "media_signed_url"));
     })();
   }, []);
 
