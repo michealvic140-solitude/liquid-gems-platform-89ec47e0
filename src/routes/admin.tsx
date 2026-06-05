@@ -2605,7 +2605,6 @@ function AnalyticsPanel() {
                 { i: ClipboardList, l: "Bet Tracker", t: "bettracker" },
                 { i: Send, l: "Broadcast", t: "broadcast" },
                 { i: Sparkles, l: "Challenges", t: "challenges" },
-                { i: MessageSquare, l: "Chat", t: "chat" },
                 { i: Megaphone, l: "Content", t: "content" },
                 { i: Trophy, l: "Emblems", t: "emblems" },
                 { i: Calendar, l: "Events", t: "events" },
@@ -3182,7 +3181,7 @@ function TasksAchievementsPanel() {
   async function createTask() {
     if (!draft.user_id || !draft.title) { toast.error("Pick a user and enter a task title"); return; }
     const { error } = await supabase.from("user_tasks").insert({ user_id: draft.user_id, title: draft.title, description: draft.description || null, reward_tokens: draft.reward_tokens || 0 });
-    if (error) toast.error(error.message); else { toast.success("Task assigned"); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0 }); load(); }
+    if (error) toast.error(error.message); else { await logAudit("task_assigned", "user_task", undefined, { target_user_id: draft.user_id, target_name: draft.title, reward_tokens: draft.reward_tokens }); toast.success("Task assigned"); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0 }); load(); }
   }
   async function markDone(task: any) {
     await supabase.from("user_tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", task.id);
@@ -3191,6 +3190,7 @@ function TasksAchievementsPanel() {
       if (p) await supabase.from("profiles").update({ token_balance: (p.token_balance ?? 0) + task.reward_tokens }).eq("id", task.user_id);
     }
     await supabase.from("notifications").insert({ user_id: task.user_id, title: "Task completed", body: `${task.title}${task.reward_tokens ? ` · +${task.reward_tokens} tokens` : ""}` });
+    await logAudit("task_completed", "user_task", task.id, { target_user_id: task.user_id, target_name: task.title, reward_tokens: task.reward_tokens });
     toast.success("Task completed"); load();
   }
   async function awardAchievement() {
@@ -3201,12 +3201,14 @@ function TasksAchievementsPanel() {
     });
     if (error) { toast.error(error.message); return; }
     await supabase.from("notifications").insert({ user_id: ach.user_id, title: "Achievement unlocked! 🏆", body: `${ach.icon} ${ach.title}` });
+    await logAudit("achievement_awarded", "achievement", undefined, { target_user_id: ach.user_id, target_name: ach.title, code: ach.code });
     toast.success("Achievement awarded");
     setAch({ user_id: "", code: "", title: "", description: "", icon: "🏆" });
     load();
   }
   async function revokeAchievement(id: string) {
     await supabase.from("user_achievements").delete().eq("id", id);
+    await logAudit("achievement_revoked", "achievement", id);
     toast.success("Revoked"); load();
   }
   return (
