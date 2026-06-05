@@ -2952,25 +2952,26 @@ function LeaderboardAdminPanel() {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  async function clearAll() {
+  async function clearScope(scope: "gang_faction" | "shooters" | "hall_of_fame", label: string) {
     if (!await confirm({
-      title: `Reset the entire leaderboard?`,
-      description: "This wipes all season points AND manual overrides. Auto-computed stats will start fresh from real (non-virtual) matches.",
-      tone: "danger", confirmText: "Clear leaderboard",
+      title: `Wipe ${label}?`,
+      description: "This clears that leaderboard area so it can start fresh.",
+      tone: "danger", confirmText: `Wipe ${label}`,
     })) return;
-    const { error } = await supabase.rpc("admin_clear_leaderboard" as any);
+    const { error } = await supabase.rpc("admin_clear_leaderboard_scope" as any, { _scope: scope });
     if (error) { toast.error(error.message); return; }
-    await logAudit("leaderboard_clear_all", "leaderboard_overrides", undefined, { previous_count: list.length });
-    toast.success("Leaderboard fully reset");
+    toast.success(`${label} wiped`);
     load();
   }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs text-muted-foreground">{list.length} manual override{list.length === 1 ? "" : "s"}</div>
-        <Button variant="destructive" size="sm" onClick={clearAll} disabled={list.length === 0}>
-          <Trash2 className="h-3 w-3 mr-1" />Reset Leaderboard
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="destructive" size="sm" onClick={() => clearScope("gang_faction", "Gang & Faction")}><Trash2 className="h-3 w-3 mr-1" />Gang & Faction</Button>
+          <Button variant="destructive" size="sm" onClick={() => clearScope("shooters", "Shooters")}><Trash2 className="h-3 w-3 mr-1" />Shooters</Button>
+          <Button variant="destructive" size="sm" onClick={() => clearScope("hall_of_fame", "Hall of Fame")}><Trash2 className="h-3 w-3 mr-1" />Hall of Fame</Button>
+        </div>
       </div>
       <Card className="glass-strong p-4 space-y-2">
         <div className="font-bold flex items-center gap-2">
