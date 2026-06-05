@@ -2120,7 +2120,7 @@ function AuditPanel() {
   const [q, setQ] = useState("");
   const [actionFilter, setActionFilter] = useState<string>("all");
 
-  useEffect(() => {
+  const load = async () => {
     supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500).then(async ({ data }) => {
       setLogs(data ?? []);
       const ids = new Set<string>();
@@ -2137,6 +2137,12 @@ function AuditPanel() {
         setProfiles(m);
       }
     });
+  };
+
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("admin-audit-live").on("postgres_changes", { event: "*", schema: "public", table: "audit_logs" }, load).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, []);
 
   const filtered = useMemo(() => {
@@ -2197,22 +2203,25 @@ function AuditPanel() {
                 <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${dotCls} shadow-[0_0_10px_currentColor]`} />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-bold text-primary">{actor?.full_name ?? "System"}</span>
+                    <span className="font-bold text-primary">{l.actor_name ?? meta.actor_name ?? actor?.full_name ?? "System"}</span>
+                    {(l.actor_role || meta.actor_role) && <Badge variant="outline" className="text-[9px] uppercase">{l.actor_role || meta.actor_role}</Badge>}
                     <span className="text-muted-foreground">{action}</span>
                     <span className="text-muted-foreground">on</span>
                     <Badge variant="outline" className="capitalize">{l.target_type ?? "—"}</Badge>
-                    {targetUser && (
+                    {(targetUser || l.target_name || meta.target_name) && (
                       <>
                         <span className="text-muted-foreground">→</span>
-                        <span className="font-bold text-emerald-300">{targetUser.full_name}</span>
+                        <span className="font-bold text-emerald-300">{targetUser?.full_name ?? l.target_name ?? meta.target_name}</span>
                       </>
                     )}
                   </div>
                   <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {actor?.email && <Detail icon={Users} label="By"><span className="font-mono">{actor.email}</span></Detail>}
+                    {(l.actor_email || meta.actor_email || actor?.email) && <Detail icon={Users} label="By"><span className="font-mono">{l.actor_email || meta.actor_email || actor?.email}</span></Detail>}
                     {targetUser?.email && <Detail icon={Users} label="To"><span className="font-mono">{targetUser.email}</span></Detail>}
                     {l.target_id && l.target_type !== "user" && <Detail icon={Tag} label="Target ID"><span className="font-mono break-all">{l.target_id}</span></Detail>}
+                    {(l.reason || meta.reason) && <Detail icon={AlertTriangle} label="Reason"><span>{l.reason || meta.reason}</span></Detail>}
                     {meta.route && <Detail icon={MapPin} label="From route"><span className="font-mono">{meta.route}</span></Detail>}
+                    {l.source && <Detail icon={Sparkles} label="Source"><span className="font-mono">{l.source}</span></Detail>}
                     {meta.origin && <Detail icon={Globe} label="Origin"><span className="font-mono">{meta.origin}</span></Detail>}
                     {meta.user_agent && <Detail icon={Smartphone} label="Device"><span className="font-mono truncate inline-block max-w-[260px] align-bottom">{summariseUA(meta.user_agent)}</span></Detail>}
                     <Detail icon={Clock} label="When"><span title={ts.toISOString()}>{ts.toLocaleString()} <span className="text-muted-foreground">({timeAgo(ts)})</span></span></Detail>
