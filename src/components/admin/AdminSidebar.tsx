@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   BarChart3, Users, Sparkles, AlertTriangle, History, ClipboardList, Send,
-  MessageSquare, Megaphone, Trophy, Calendar, Wallet, ListOrdered, Tag,
+  Megaphone, Trophy, Calendar, Wallet, ListOrdered, Tag,
   Settings as SettingsIcon, Ticket, Coins, Dice5,
 } from "lucide-react";
 import lslLogo from "@/assets/lsl-logo.png";
@@ -36,7 +36,6 @@ const NAV: AdminNavItem[] = [
   { key: "bettracker",  label: "Bet Tracker",          icon: ClipboardList,   admin: true, alertKey: "bettracker" },
   { key: "broadcast",   label: "Broadcast",            icon: Send,            admin: true },
   { key: "challenges",  label: "Challenges",           icon: Sparkles,        admin: true },
-  { key: "chat",        label: "Chat",                 icon: MessageSquare,   modOk: true, alertKey: "chat" },
   { key: "content",     label: "Content",              icon: Megaphone,       modOk: true },
   { key: "emblems",     label: "Emblems",              icon: Trophy,          admin: true },
   { key: "events",      label: "Events",               icon: Calendar,        admin: true },
