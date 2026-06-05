@@ -1412,7 +1412,7 @@ function EventsPanel() {
 
   async function load() {
     const { data } = await (supabase as any).from("events_public").select("*").order("ends_at", { ascending: true });
-    setEvents(data ?? []);
+    setEvents(await withResolvedMedia((data ?? []) as any[], "event-banners", "banner_url", "banner_signed_url"));
   }
   useEffect(() => { load(); }, []);
 
@@ -1727,7 +1727,10 @@ function ContentPanel() {
 function AnnouncementsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", body: "", file: null as File | null });
-  async function load() { setList((await (supabase as any).from("announcements_public").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("announcements_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "announcements", "image_url", "image_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title) return;
@@ -1765,7 +1768,10 @@ function AnnouncementsPanel() {
 function HighlightsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", file: null as File | null });
-  async function load() { setList((await (supabase as any).from("highlights_public").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("highlights_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "highlights", "media_url", "media_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title || !draft.file) { toast.error("Title and media required"); return; }
@@ -1804,7 +1810,10 @@ function HighlightsPanel() {
 function AdsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", link_url: "", file: null as File | null });
-  async function load() { setList((await (supabase as any).from("advertisements_public").select("*").order("created_at", { ascending: false })).data ?? []); }
+  async function load() {
+    const { data } = await (supabase as any).from("advertisements_public").select("*").order("created_at", { ascending: false });
+    setList(await withResolvedMedia((data ?? []) as any[], "ads", "image_url", "image_signed_url"));
+  }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.file) { toast.error("Image required"); return; }
@@ -3779,7 +3788,7 @@ function SeasonsAdminPanel() {
   const [form, setForm] = useState<any>({ name: "", description: "", banner_file: null as File | null, starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
   const load = async () => {
     const { data } = await (supabase as any).from("seasons_public").select("*").order("starts_at", { ascending: false });
-    setList(data ?? []);
+    setList(await withResolvedMedia((data ?? []) as any[], "season-banners", "banner_url", "banner_signed_url"));
   };
   useEffect(() => { load(); }, []);
   async function save() {
