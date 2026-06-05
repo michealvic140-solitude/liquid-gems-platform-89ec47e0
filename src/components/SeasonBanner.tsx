@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy } from "lucide-react";
+import { resolveStorageUrl } from "@/lib/storage-media";
 
 function seasonDiff(now: number, target: number) {
   let s = Math.max(0, Math.floor((target - now) / 1000));
@@ -21,7 +22,7 @@ export function SeasonBanner() {
   useEffect(() => {
     const load = async () => {
         const { data: s } = await (supabase as any).from("seasons_public").select("*").eq("is_active", true).order("starts_at", { ascending: false }).limit(1).maybeSingle();
-      setSeason(s);
+        setSeason(s ? { ...s, banner_signed_url: await resolveStorageUrl("season-banners", (s as any).banner_url) } : s);
       if (s) {
         const { data: pts } = await supabase.from("season_points").select("*, profiles:user_id(full_name, ingame_name, gang_name)").eq("season_id", (s as any).id).order("points", { ascending: false }).limit(5);
         setTop(pts ?? []);
