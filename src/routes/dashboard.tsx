@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { Ticket as TicketIcon, ChevronRight, Wallet, UserCog, CreditCard, Coins, Tag, Trophy, ListChecks, Sparkles, Lock } from "lucide-react";
 import { ChallengesPanel } from "@/components/ChallengesPanel";
 import { VipCard, GangEmblemUpload } from "@/components/UserHubSections";
-import { RedeemReferralCard } from "@/components/RedeemReferralCard";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -102,7 +101,6 @@ function Dashboard() {
 
         <div className="grid md:grid-cols-2 gap-4 mb-10">
           <VipCard />
-          <RedeemReferralCard />
         </div>
 
         <div className="mb-10">
