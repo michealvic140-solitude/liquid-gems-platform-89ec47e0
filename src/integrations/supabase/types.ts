@@ -281,29 +281,50 @@ export type Database = {
       audit_logs: {
         Row: {
           action: string
+          actor_email: string | null
           actor_id: string | null
+          actor_name: string | null
+          actor_role: string | null
           created_at: string
           id: string
           metadata: Json
+          reason: string | null
+          route: string | null
+          source: string | null
           target_id: string | null
+          target_name: string | null
           target_type: string | null
         }
         Insert: {
           action: string
+          actor_email?: string | null
           actor_id?: string | null
+          actor_name?: string | null
+          actor_role?: string | null
           created_at?: string
           id?: string
           metadata?: Json
+          reason?: string | null
+          route?: string | null
+          source?: string | null
           target_id?: string | null
+          target_name?: string | null
           target_type?: string | null
         }
         Update: {
           action?: string
+          actor_email?: string | null
           actor_id?: string | null
+          actor_name?: string | null
+          actor_role?: string | null
           created_at?: string
           id?: string
           metadata?: Json
+          reason?: string | null
+          route?: string | null
+          source?: string | null
           target_id?: string | null
+          target_name?: string | null
           target_type?: string | null
         }
         Relationships: []
@@ -1463,10 +1484,18 @@ export type Database = {
             referencedRelation: "seasons"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "season_points_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "seasons_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       seasons: {
         Row: {
+          banner_url: string | null
           created_at: string
           description: string | null
           ends_at: string | null
@@ -1476,6 +1505,7 @@ export type Database = {
           starts_at: string
         }
         Insert: {
+          banner_url?: string | null
           created_at?: string
           description?: string | null
           ends_at?: string | null
@@ -1485,6 +1515,7 @@ export type Database = {
           starts_at?: string
         }
         Update: {
+          banner_url?: string | null
           created_at?: string
           description?: string | null
           ends_at?: string | null
@@ -2049,6 +2080,129 @@ export type Database = {
       }
     }
     Views: {
+      advertisements_public: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          image_signed_url: string | null
+          image_url: string | null
+          is_active: boolean | null
+          link_url: string | null
+          title: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          image_signed_url?: never
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          image_signed_url?: never
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      announcements_public: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          id: string | null
+          image_signed_url: string | null
+          image_url: string | null
+          is_active: boolean | null
+          title: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          id?: string | null
+          image_signed_url?: never
+          image_url?: string | null
+          is_active?: boolean | null
+          title?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          id?: string | null
+          image_signed_url?: never
+          image_url?: string | null
+          is_active?: boolean | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      events_public: {
+        Row: {
+          banner_signed_url: string | null
+          banner_url: string | null
+          created_at: string | null
+          description: string | null
+          ends_at: string | null
+          id: string | null
+          is_active: boolean | null
+          title: string | null
+        }
+        Insert: {
+          banner_signed_url?: never
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          ends_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          title?: string | null
+        }
+        Update: {
+          banner_signed_url?: never
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          ends_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      highlights_public: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          media_signed_url: string | null
+          media_type: string | null
+          media_url: string | null
+          title: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          media_signed_url?: never
+          media_type?: string | null
+          media_url?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          media_signed_url?: never
+          media_type?: string | null
+          media_url?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
       hot_bets_v1: {
         Row: {
           avg_odds: number | null
@@ -2064,6 +2218,42 @@ export type Database = {
           stake_volume: number | null
           total_stake: number | null
           users_count: number | null
+        }
+        Relationships: []
+      }
+      seasons_public: {
+        Row: {
+          banner_signed_url: string | null
+          banner_url: string | null
+          created_at: string | null
+          description: string | null
+          ends_at: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          starts_at: string | null
+        }
+        Insert: {
+          banner_signed_url?: never
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          ends_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          starts_at?: string | null
+        }
+        Update: {
+          banner_signed_url?: never
+          banner_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          ends_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          starts_at?: string | null
         }
         Relationships: []
       }
@@ -2083,6 +2273,7 @@ export type Database = {
         Returns: Json
       }
       admin_clear_leaderboard: { Args: never; Returns: Json }
+      admin_clear_leaderboard_scope: { Args: { _scope: string }; Returns: Json }
       admin_delete_bet: { Args: { bet_id: string }; Returns: Json }
       admin_delete_leaderboard_override: {
         Args: { _id: string }
@@ -2098,6 +2289,15 @@ export type Database = {
         }[]
       }
       admin_lock_virtual_round: { Args: { match_id: string }; Returns: Json }
+      admin_log_action: {
+        Args: {
+          _action: string
+          _metadata?: Json
+          _target_id?: string
+          _target_type?: string
+        }
+        Returns: Json
+      }
       admin_pnl_summary: { Args: { days?: number }; Returns: Json }
       admin_refund_bet: { Args: { bet_id: string }; Returns: Json }
       admin_review_virtual_payout: {
@@ -2141,6 +2341,7 @@ export type Database = {
         }
         Returns: Json
       }
+      current_admin_role: { Args: never; Returns: string }
       decline_promo_request: {
         Args: { _note?: string; id: string }
         Returns: Json
@@ -2162,6 +2363,7 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_admin_or_moderator: { Args: { _user_id: string }; Returns: boolean }
       place_bet_ticket: {
         Args: { _selections: Json; _stake: number }
         Returns: Json
@@ -2190,6 +2392,14 @@ export type Database = {
       }
       server_now: { Args: never; Returns: string }
       settle_pay_winning_bet: { Args: { bet_id: string }; Returns: Json }
+      signed_storage_url: {
+        Args: { _bucket: string; _expires?: number; _path_or_url: string }
+        Returns: string
+      }
+      storage_path_from_url: {
+        Args: { _bucket: string; _url: string }
+        Returns: string
+      }
       user_cashout_bet: { Args: { bet_id: string }; Returns: Json }
       user_claim_virtual_payout: { Args: { bet_id: string }; Returns: Json }
       verify_xp_consistency: { Args: { user_id?: string }; Returns: Json }
