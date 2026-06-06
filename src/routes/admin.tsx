@@ -117,7 +117,7 @@ function AdminPage() {
                 <h1 className="text-2xl sm:text-3xl font-bold gradient-gold-text">Admin Console</h1>
               </div>
               <Badge variant="outline" className={`ml-auto ${isAdmin ? "border-accent/50 text-accent" : "border-primary/50 text-primary"}`}>
-                {isAdmin ? "Admin" : "Moderator"}
+                {isAdmin ? "Super Admin" : "Admin"}
               </Badge>
               {isAdmin && (
                 <div className="flex items-center gap-1 w-full sm:w-auto sm:ml-2">
@@ -2576,15 +2576,23 @@ function AnalyticsPanel() {
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <PanelBlock title="EVENT COUNTDOWN" accent="amber" onView={() => setActiveTabFromAnalytics(nav, "events")}>
           {event ? (
-            <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="w-full text-left hover:bg-amber-500/10 rounded p-1 transition flex gap-1.5 items-center">
-              {event.banner_url ? (
-                <img src={event.banner_signed_url || event.banner_url} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover border border-amber-500/40 shrink-0" />
+            <button
+              onClick={() => setActiveTabFromAnalytics(nav, "events")}
+              className="relative w-full text-left rounded-lg overflow-hidden border border-amber-500/40 min-h-[96px] sm:min-h-[120px] group"
+            >
+              {(event.banner_signed_url || event.banner_url) ? (
+                <img
+                  src={event.banner_signed_url || event.banner_url}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
               ) : (
-                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-md bg-amber-500/20 grid place-items-center border border-amber-500/40 shrink-0"><Calendar className="h-4 w-4 text-amber-300" /></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/30 via-amber-700/20 to-background" />
               )}
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] sm:text-xs font-bold text-foreground truncate">{event.title}</div>
-                <div className="text-[10px] sm:text-sm font-mono text-amber-300"><Countdown target={event.ends_at} /></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-background/85 via-background/55 to-background/25" />
+              <div className="relative p-2 sm:p-3 flex flex-col justify-end h-full min-h-[96px] sm:min-h-[120px]">
+                <div className="text-[9px] sm:text-xs font-bold text-foreground truncate drop-shadow">{event.title}</div>
+                <div className="text-base sm:text-2xl font-extrabold font-mono text-amber-300 drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)] tabular-nums"><Countdown target={event.ends_at} /></div>
                 <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.ends_at).toLocaleString()}</div>
               </div>
             </button>
