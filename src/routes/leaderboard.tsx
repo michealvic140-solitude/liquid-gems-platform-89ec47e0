@@ -65,7 +65,7 @@ function Page() {
     setBannerDescription(desc);
     setDraftDesc(desc);
     if (url) {
-      const signed = await resolveStorageUrl(url, "highlights");
+      const signed = await resolveStorageUrl("highlights", url);
       setBannerSigned(signed ?? url);
     } else {
       setBannerSigned(null);
