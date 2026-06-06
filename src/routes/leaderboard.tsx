@@ -3,8 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy } from "lucide-react";
+import { Trophy, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { resolveStorageUrl } from "@/lib/storage-media";
 
 export const Route = createFileRoute("/leaderboard")({
   head: () => ({
@@ -40,6 +45,72 @@ type Stats = { name: string; top_player?: string; W: number; L: number; D: numbe
 function Page() {
   const [shooters, setShooters] = useState<Stats[]>([]);
   const [gangs, setGangs] = useState<Stats[]>([]);
+  const { isAdmin } = useAuth();
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [bannerDescription, setBannerDescription] = useState<string>("");
+  const [bannerSigned, setBannerSigned] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [draftDesc, setDraftDesc] = useState("");
+
+  const loadBanner = async () => {
+    const { data } = await supabase
+      .from("app_settings")
+      .select("leaderboard_banner_url,leaderboard_banner_description")
+      .eq("id", 1)
+      .maybeSingle();
+    const url = (data as any)?.leaderboard_banner_url ?? null;
+    const desc = (data as any)?.leaderboard_banner_description ?? "";
+    setBannerUrl(url);
+    setBannerDescription(desc);
+    setDraftDesc(desc);
+    if (url) {
+      const signed = await resolveStorageUrl(url, "highlights");
+      setBannerSigned(signed ?? url);
+    } else {
+      setBannerSigned(null);
+    }
+  };
+
+  useEffect(() => { loadBanner(); }, []);
+
+  async function uploadBanner(file: File) {
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `leaderboard/banner-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("highlights").upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { error: dbErr } = await (supabase as any).from("app_settings")
+        .update({ leaderboard_banner_url: path, leaderboard_banner_description: draftDesc })
+        .eq("id", 1);
+      if (dbErr) throw dbErr;
+      toast.success("Leaderboard banner updated");
+      setEditing(false);
+      await loadBanner();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Upload failed");
+    } finally { setUploading(false); }
+  }
+
+  async function saveDescription() {
+    const { error } = await (supabase as any).from("app_settings")
+      .update({ leaderboard_banner_description: draftDesc })
+      .eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Description saved");
+    setEditing(false);
+    await loadBanner();
+  }
+
+  async function removeBanner() {
+    const { error } = await (supabase as any).from("app_settings")
+      .update({ leaderboard_banner_url: null, leaderboard_banner_description: null })
+      .eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Banner removed");
+    await loadBanner();
+  }
 
   useEffect(() => {
     (async () => {
@@ -108,6 +179,49 @@ function Page() {
   return (
     <Layout>
       <div className="container py-10">
+        {(bannerSigned || isAdmin) && (
+          <Card className="glass-strong overflow-hidden mb-6 border-primary/30">
+            {bannerSigned ? (
+              <div className="relative w-full">
+                <img src={bannerSigned} alt={bannerDescription || "Leaderboard banner"} className="w-full max-h-[420px] object-cover" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 via-background/60 to-transparent p-4 sm:p-6">
+                  {bannerDescription && <p className="text-sm sm:text-base text-foreground/90 max-w-3xl drop-shadow">{bannerDescription}</p>}
+                </div>
+                {isAdmin && (
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</Button>
+                    <Button size="sm" variant="destructive" onClick={removeBanner}><X className="h-3 w-3 mr-1" />Remove</Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              isAdmin && (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No leaderboard banner yet — upload one below to feature it at the top of this page.
+                </div>
+              )
+            )}
+            {isAdmin && (editing || !bannerSigned) && (
+              <div className="p-4 space-y-3 border-t border-border/40 bg-card/30">
+                <Textarea
+                  placeholder="Banner description (visible to everyone)…"
+                  value={draftDesc}
+                  onChange={(e) => setDraftDesc(e.target.value)}
+                  className="min-h-[80px]"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex">
+                    <input type="file" accept="image/*" hidden disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); }} />
+                    <span className={`inline-flex items-center gap-1 px-3 py-2 rounded-md text-xs font-bold cursor-pointer btn-luxury ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
+                      <Upload className="h-3.5 w-3.5" />{uploading ? "Uploading…" : (bannerSigned ? "Replace banner" : "Upload banner")}
+                    </span>
+                  </label>
+                  {bannerSigned && <Button size="sm" variant="outline" onClick={saveDescription}>Save description</Button>}
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
         <div className="flex items-center gap-2 mb-6">
           <Trophy className="h-7 w-7 text-primary" />
           <h1 className="text-3xl font-bold gradient-gold-text">Leaderboard</h1>
