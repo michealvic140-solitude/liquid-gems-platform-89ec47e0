@@ -40,7 +40,7 @@ export const Layout = ({ children }: { children: ReactNode }) => {
             {user && <NavLink to="/withdraw" icon={Wallet} label="Withdraw" />}
             {user && <NavLink to="/support" icon={LifeBuoy} label="Support" />}
             {user && <NavLink to="/settings" icon={SettingsIcon} label="Settings" />}
-            {(isAdmin || isMod) && <NavLink to="/admin" icon={Shield} label={isAdmin ? "Admin" : "Mod"} danger />}
+            {(isAdmin || isMod) && <NavLink to="/admin" icon={Shield} label={isAdmin ? "Super Admin" : "Admin"} danger />}
           </nav>
           <div className="flex items-center gap-2 shrink-0 ml-auto lg:ml-0">
             {user && profile ? (
@@ -100,7 +100,7 @@ export const Layout = ({ children }: { children: ReactNode }) => {
               <MobLink to="/settings" icon={SettingsIcon} label="Settings" />
               <MobLink to="/support" icon={LifeBuoy} label="Help" />
             </>}
-            {(isAdmin || isMod) && <MobLink to="/admin" icon={Shield} label={isAdmin ? "Admin" : "Mod"} />}
+            {(isAdmin || isMod) && <MobLink to="/admin" icon={Shield} label={isAdmin ? "S.Admin" : "Admin"} />}
           </div>
         </div>
       </nav>
