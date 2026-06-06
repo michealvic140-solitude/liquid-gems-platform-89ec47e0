@@ -93,6 +93,8 @@ export type Database = {
           hero_tagline: string | null
           house_low_balance: number
           id: number
+          leaderboard_banner_description: string | null
+          leaderboard_banner_url: string | null
           maintenance_message: string | null
           maintenance_mode: boolean
           max_payout: number
@@ -162,6 +164,8 @@ export type Database = {
           hero_tagline?: string | null
           house_low_balance?: number
           id?: number
+          leaderboard_banner_description?: string | null
+          leaderboard_banner_url?: string | null
           maintenance_message?: string | null
           maintenance_mode?: boolean
           max_payout?: number
@@ -231,6 +235,8 @@ export type Database = {
           hero_tagline?: string | null
           house_low_balance?: number
           id?: number
+          leaderboard_banner_description?: string | null
+          leaderboard_banner_url?: string | null
           maintenance_message?: string | null
           maintenance_mode?: boolean
           max_payout?: number
