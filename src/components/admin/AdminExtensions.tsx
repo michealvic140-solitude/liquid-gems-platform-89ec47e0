@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { AlertTriangle, Activity, TrendingUp, TrendingDown, Wallet, Users, Image as ImageIcon, Crown, Gift, RefreshCw, Bell, Send, Coins, Sparkles, FileDown, Heart, Bot, Loader2 } from "lucide-react";
+import { AlertTriangle, Activity, TrendingUp, TrendingDown, Wallet, Users, Image as ImageIcon, Crown, Gift, RefreshCw, Bell, Send, Coins, Sparkles, FileDown, Heart, Bot, Loader2, Share2, Copy } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
 import { useServerFn } from "@tanstack/react-start";
 import { adminAiChat } from "@/lib/admin-ai.functions";
@@ -23,21 +23,29 @@ export function StreakAndPushPanel() {
   const genVapid = useServerFn(generateVapidKeys);
 
   async function load() {
-    const { data } = await supabase.from("app_settings")
-      .select("daily_login_enabled, daily_login_base_reward, daily_login_bonus_per_day, daily_login_max_streak, vapid_public_key, vapid_subject, push_endpoint_url")
-      .eq("id", 1).maybeSingle();
-    setS(data ?? {});
+    const [{ data: pub }, { data: priv }] = await Promise.all([
+      supabase.from("app_settings")
+        .select("daily_login_enabled, daily_login_base_reward, daily_login_bonus_per_day, daily_login_max_streak, vapid_public_key")
+        .eq("id", 1).maybeSingle(),
+      supabase.from("app_settings_private").select("vapid_subject, push_endpoint_url").eq("id", 1).maybeSingle(),
+    ]);
+    setS({ ...(pub ?? {}), ...(priv ?? {}) });
   }
   useEffect(() => { load(); }, []);
 
   async function save() {
-    const { error } = await supabase.from("app_settings").update(s).eq("id", 1);
+    const { vapid_subject, push_endpoint_url, ...pub } = s;
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from("app_settings").update(pub).eq("id", 1),
+      supabase.from("app_settings_private").update({ vapid_subject, push_endpoint_url }).eq("id", 1),
+    ]);
+    const error = e1 || e2;
     if (error) toast.error(error.message); else toast.success("Saved (audit log recorded)");
   }
 
   async function verifyXp() {
     setVerifying(true);
-    const { data, error } = await supabase.rpc("verify_xp_consistency", { user_id: undefined });
+    const { data, error } = await supabase.rpc("verify_xp_consistency", { _user_id: undefined });
     setVerifying(false);
     if (error) toast.error(error.message); else toast.success(`Checked ${(data as any)?.checked ?? 0} users · fixed ${(data as any)?.fixed ?? 0}`);
   }
@@ -155,7 +163,7 @@ export function RiskPanel() {
     const [{ data: rs }, { data: ex }, { data: ap }] = await Promise.all([
       supabase.rpc("admin_risk_summary"),
       supabase.rpc("admin_exposure_per_match"),
-      supabase.from("app_settings").select("exposure_warn_pct, house_low_balance").eq("id", 1).maybeSingle(),
+      supabase.from("app_settings_private").select("exposure_warn_pct, house_low_balance").eq("id", 1).maybeSingle(),
     ]);
     setS(rs);
     setExposure((ex as any) ?? []);
@@ -169,7 +177,7 @@ export function RiskPanel() {
   }, []);
 
   async function togglePause() {
-    const { error } = await supabase.rpc("house_set_paused", { paused: !paused, reason: reason || undefined });
+    const { error } = await supabase.rpc("house_set_paused", { _paused: !paused, _reason: reason || undefined });
     if (error) return toast.error(error.message);
     toast.success(!paused ? "Payouts paused globally" : "Payouts resumed");
     load();
@@ -267,7 +275,7 @@ export function PnLPanel() {
   const [topUsers, setTopUsers] = useState<any[]>([]);
 
   async function load() {
-    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { days: days });
+    const { data: pnl } = await supabase.rpc("admin_pnl_summary", { _days: days });
     setData(pnl);
     // build daily series from house_transactions
     const since = new Date(); since.setDate(since.getDate() - days);
@@ -479,7 +487,7 @@ export function BroadcastPanel() {
   async function send() {
     if (!title.trim()) { toast.error("Title required"); return; }
     setSending(true);
-    const { data, error } = await supabase.rpc("admin_broadcast", { title: title, _body: body || "", _link: link || "", _segment: segment });
+    const { data, error } = await supabase.rpc("admin_broadcast", { _title: title, _body: body || "", _link: link || "", _segment: segment });
     setSending(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Sent to ${(data as any)?.sent ?? 0} users`);
@@ -527,7 +535,7 @@ export function ActivityPanel() {
   const [rows, setRows] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, any>>({});
   async function load() {
-    const { data } = await supabase.from("user_sessions").select("*").order("last_seen", { ascending: false }).limit(100);
+    const { data } = await supabase.from("user_sessions").select("*").order("last_seen", { ascending: false }).limit(150);
     setRows(data ?? []);
     const ids = (data ?? []).map((r:any)=>r.user_id);
     if (ids.length) {
@@ -538,26 +546,59 @@ export function ActivityPanel() {
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
   const onlineThreshold = Date.now() - 2 * 60 * 1000;
   const online = rows.filter((r) => new Date(r.last_seen).getTime() > onlineThreshold);
+  const fmt = (v: any) => v ? new Date(v).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—";
+  const relTime = (v: any) => {
+    if (!v) return "—";
+    const diff = Date.now() - new Date(v).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  };
   return (
     <div className="space-y-4">
       <Card className="p-5 flex items-center gap-3">
         <Activity className="h-5 w-5 text-emerald-400" />
-        <div><div className="font-bold">Live user activity</div><div className="text-xs text-muted-foreground">Updates every 15s · {online.length} online now / {rows.length} tracked</div></div>
-        <Button size="sm" variant="outline" className="ml-auto" onClick={load}><RefreshCw className="h-3 w-3 mr-1" />Refresh</Button>
+        <div className="flex-1"><div className="font-bold">Live user activity</div><div className="text-xs text-muted-foreground">Updates every 15s · <span className="text-emerald-400 font-bold">{online.length} online</span> · {rows.length - online.length} offline · {rows.length} tracked</div></div>
+        <Button size="sm" variant="outline" onClick={load}><RefreshCw className="h-3 w-3 mr-1" />Refresh</Button>
       </Card>
       <Card className="p-3">
         <div className="space-y-1 max-h-[600px] overflow-y-auto">
           {rows.map((r) => {
             const p = profiles[r.user_id]; const isOn = new Date(r.last_seen).getTime() > onlineThreshold;
+            const device = r.device_type || (/(mobile|android|iphone|ipad)/i.test(r.user_agent || "") ? "Mobile" : "Desktop");
+            const browser = r.browser || (r.user_agent?.match(/Chrome|Firefox|Safari|Edge|Opera/)?.[0] ?? "—");
+            const os = r.os || (r.user_agent?.match(/Windows|Mac OS X|Linux|Android|iOS|iPhone OS/)?.[0] ?? "—");
+            const cameOnline = r.signed_in_at || r.session_start;
             return (
               <div key={r.user_id} className="flex items-center gap-3 py-2 border-b border-border/50">
-                <span className={`h-2.5 w-2.5 rounded-full ${isOn ? "bg-emerald-400 animate-pulse" : "bg-muted"}`} />
+                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${isOn ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-muted"}`} title={isOn ? "Online" : "Offline"} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold truncate">{p?.full_name ?? "—"} <span className="text-xs text-muted-foreground">{p?.email}</span></div>
-                  <div className="text-[11px] text-muted-foreground truncate">{r.route ?? "—"} · {r.user_agent?.slice(0,60) ?? "—"}</div>
+                  <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 flex-wrap">
+                    <span className="text-foreground">{r.route ?? "—"}</span>
+                    <span className="opacity-50">·</span>
+                    <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[9px] uppercase">{device}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30 text-[9px]">{browser}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[9px]">{os}</span>
+                    {r.ip_address && <><span className="opacity-50">·</span><span className="font-mono text-[9px]">{r.ip_address}</span></>}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-300/90">Came online: {fmt(cameOnline)}</span>
+                    <span className="opacity-50">·</span>
+                    {isOn ? (
+                      <span className="text-emerald-400 font-semibold">Active now</span>
+                    ) : (
+                      <span className="text-amber-300/90">Went offline: {fmt(r.last_seen)} ({relTime(r.last_seen)})</span>
+                    )}
+                  </div>
                 </div>
-                <Badge variant="outline" className="capitalize">{p?.vip_tier ?? "bronze"}</Badge>
-                <div className="text-[10px] text-muted-foreground w-24 text-right">{new Date(r.last_seen).toLocaleTimeString()}</div>
+                <Badge variant="outline" className={`capitalize ${isOn ? "border-emerald-500/40 text-emerald-300" : ""}`}>{isOn ? "Online" : "Offline"}</Badge>
+                <Badge variant="outline" className="capitalize hidden sm:inline-flex">{p?.vip_tier ?? "bronze"}</Badge>
+                <div className="text-[10px] text-muted-foreground w-24 text-right shrink-0">{isOn ? "now" : relTime(r.last_seen)}</div>
               </div>
             );
           })}
@@ -575,7 +616,7 @@ export function ReportsPanel() {
   const [series, setSeries] = useState<any[]>([]);
 
   async function load() {
-    const { data } = await supabase.rpc("admin_pnl_summary", { days: days });
+    const { data } = await supabase.rpc("admin_pnl_summary", { _days: days });
     setPnl(data);
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const { data: bets } = await supabase.from("bets").select("created_at,stake,potential_payout,status,settled_at").gte("created_at", since);
@@ -740,8 +781,7 @@ export function ReferralsAdminPanel() {
   const [s, setS] = useState<any>(null);
   const [list, setList] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, any>>({});
-  const [userQuery, setUserQuery] = useState("");
-  const [inviteUsers, setInviteUsers] = useState<any[]>([]);
+  const [myCode, setMyCode] = useState<string>("");
 
   async function load() {
     const { data: settings } = await supabase
@@ -758,18 +798,13 @@ export function ReferralsAdminPanel() {
       const { data: p } = await supabase.from("profiles").select("id, full_name, ingame_name").in("id", ids);
       const map: any = {}; (p ?? []).forEach((x: any) => { map[x.id] = x; }); setProfiles(map);
     }
+    const { data: auth } = await supabase.auth.getUser();
+    if (auth?.user) {
+      const { data: me } = await supabase.from("profiles").select("referral_code").eq("id", auth.user.id).maybeSingle();
+      setMyCode((me as any)?.referral_code ?? "");
+    }
   }
   useEffect(() => { load(); }, []);
-
-  useEffect(() => {
-    if (!userQuery.trim()) { setInviteUsers([]); return; }
-    const t = setTimeout(async () => {
-      const q = userQuery.trim();
-      const { data } = await supabase.from("profiles").select("id,full_name,ingame_name,email,referral_code").or(`full_name.ilike.%${q}%,ingame_name.ilike.%${q}%,email.ilike.%${q}%`).limit(10);
-      setInviteUsers(data ?? []);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [userQuery]);
 
   async function save() {
     const payload = {
@@ -784,9 +819,42 @@ export function ReferralsAdminPanel() {
   if (!s) return null;
   const totalReferrals = list.length;
   const totalPaid = list.reduce((a, b) => a + Number(b.referrer_bonus || 0) + Number(b.referee_bonus || 0), 0);
+  const shareLink = typeof window !== "undefined" && myCode ? `${window.location.origin}/register?ref=${myCode}` : "";
+  async function shareCode() {
+    if (!shareLink) return;
+    if (typeof navigator !== "undefined" && (navigator as any).share) {
+      try { await (navigator as any).share({ title: "Join LSL", text: `Use my referral code ${myCode}`, url: shareLink }); return; } catch {}
+    }
+    navigator.clipboard.writeText(shareLink);
+    toast.success("Share link copied");
+  }
 
   return (
     <div className="space-y-4">
+      {myCode && (
+        <Card className="p-5 space-y-3 border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 via-card/80 to-primary/5">
+          <div className="flex items-center gap-2"><Share2 className="h-5 w-5 text-emerald-400" /><div className="font-bold">Your admin referral link</div></div>
+          <p className="text-xs text-muted-foreground">Share this link or code with users. New sign-ups crediting it will pay both bonuses below.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase text-muted-foreground">Your code</label>
+              <div className="flex gap-2 mt-1">
+                <Input readOnly value={myCode} className="font-mono font-bold" />
+                <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(myCode); toast.success("Code copied"); }} title="Copy code"><Copy className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase text-muted-foreground">Share link</label>
+              <div className="flex gap-2 mt-1">
+                <Input readOnly value={shareLink} className="text-xs" />
+                <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(shareLink); toast.success("Link copied"); }} title="Copy link"><Copy className="h-4 w-4" /></Button>
+                <Button size="icon" onClick={shareCode} title="Share"><Share2 className="h-4 w-4" /></Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card className="p-5 space-y-3">
         <div className="flex items-center gap-2 mb-2"><Gift className="h-5 w-5 text-primary" /><div className="font-bold">Referral system</div></div>
         <p className="text-xs text-muted-foreground">Admin-only controls. Set the token amount granted to the referrer and the new user (referee) when a referral code is redeemed.</p>
@@ -805,29 +873,6 @@ export function ReferralsAdminPanel() {
           </div>
         </div>
         <Button onClick={save} className="btn-luxury">Save</Button>
-      </Card>
-
-      <Card className="p-5 space-y-3">
-        <div className="font-bold">Send invite link or code</div>
-        <Input placeholder="Search existing member to use their referral code" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
-        <div className="space-y-2 max-h-72 overflow-y-auto">
-          {inviteUsers.length === 0 && <p className="text-xs text-muted-foreground">Search a referrer by name or email.</p>}
-          {inviteUsers.map((u) => {
-            const code = u.referral_code || `LSL-${String(u.id).replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-            const link = typeof window !== "undefined" ? `${window.location.origin}/register?ref=${encodeURIComponent(code)}` : code;
-            return (
-              <div key={u.id} className="rounded-lg border border-border p-2 text-sm flex items-center gap-2 flex-wrap">
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold truncate">{u.ingame_name || u.full_name || u.email}</div>
-                  <div className="font-mono text-[11px] text-primary truncate">{code}</div>
-                  <div className="font-mono text-[10px] text-muted-foreground truncate">{link}</div>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(code); toast.success("Invite code copied"); }}>Copy code</Button>
-                <Button size="sm" className="btn-luxury" onClick={() => { navigator.clipboard.writeText(link); toast.success("Invite link copied"); }}>Copy link</Button>
-              </div>
-            );
-          })}
-        </div>
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
@@ -878,7 +923,7 @@ export function EmblemModerationPanel() {
 
   async function review(id: string, approve: boolean) {
     const note = approve ? null : prompt("Reason for rejection?") || null;
-    const { error } = await supabase.rpc("review_gang_emblem", { id: id, _approve: approve, _note: note ?? undefined });
+    const { error } = await supabase.rpc("review_gang_emblem", { _id: id, _approve: approve, _note: note ?? undefined });
     if (error) toast.error(error.message); else { toast.success(approve ? "Approved" : "Rejected"); load(); }
   }
 
@@ -948,7 +993,7 @@ export function VipAdminPanel() {
   }
 
   async function adjust(uid: string, delta: number) {
-    const { error } = await supabase.rpc("admin_adjust_xp", { user_id: uid, _delta: delta, _reason: "admin manual" });
+    const { error } = await supabase.rpc("admin_adjust_xp", { _user_id: uid, _delta: delta, _reason: "admin manual" });
     if (error) toast.error(error.message); else { toast.success("XP adjusted"); load(); }
   }
 

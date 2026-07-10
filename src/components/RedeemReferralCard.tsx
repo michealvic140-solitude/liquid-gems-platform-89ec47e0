@@ -8,8 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 /**
- * Compact dashboard card that lets a signed-in user redeem a referral code
- * exactly once. Hides itself if the user has already redeemed one.
+ * Lets a signed-in user redeem a referral code exactly once.
+ * Hides itself if the user has already redeemed one.
  */
 export function RedeemReferralCard() {
   const { user } = useAuth();
@@ -21,7 +21,7 @@ export function RedeemReferralCard() {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("referral_redemptions")
         .select("id")
         .eq("user_id", user.id)
@@ -34,7 +34,7 @@ export function RedeemReferralCard() {
   async function submit() {
     if (!code.trim()) return toast.error("Enter a referral code");
     setBusy(true);
-    const { data, error } = await supabase.rpc("redeem_referral_code", { _code: code.trim() } as any);
+    const { data, error } = await supabase.rpc("redeem_referral_code" as any, { _code: code.trim() } as any);
     setBusy(false);
     if (error) return toast.error(error.message);
     const result = data as any;
@@ -44,10 +44,11 @@ export function RedeemReferralCard() {
         code_not_found: "Invalid referral code.",
         self_referral: "You can't redeem your own referral code.",
         invalid_code: "Enter a valid code.",
+        unauth: "Please sign in.",
       };
       return toast.error(map[result?.error] || result?.error || "Could not redeem code");
     }
-    toast.success(`Code redeemed! +${result.referee_bonus.toLocaleString()} tokens credited.`);
+    toast.success(`Code redeemed! +${Number(result.referee_bonus).toLocaleString()} tokens credited.`);
     setAlreadyRedeemed(true);
     setCode("");
   }

@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Flame, Gift, Trophy, CheckCircle2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { StreakFirePopout } from "@/components/StreakFirePopout";
 
 export function ChallengesPanel() {
   const { user, profile, refresh } = useAuth();
   const [challenges, setChallenges] = useState<any[]>([]);
   const [progress, setProgress] = useState<Record<string, any>>({});
   const [claiming, setClaiming] = useState(false);
+  const [fire, setFire] = useState<{ streak: number; reward: number } | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const claimedToday = profile?.last_login_date === today;
 
@@ -40,12 +42,15 @@ export function ChallengesPanel() {
     if (error) return toast.error(error.message);
     const r = data as any;
     if (r?.already_claimed) toast.info("Already claimed today");
-    else toast.success(`+${r.reward.toLocaleString()} tokens · Day ${r.streak} streak 🔥`);
+    else {
+      setFire({ streak: Number(r.streak ?? 0), reward: Number(r.reward ?? 0) });
+      toast.success(`+${Number(r.reward ?? 0).toLocaleString()} tokens · Day ${r.streak} streak 🔥`);
+    }
     await refresh();
   }
 
   async function claim(p: any) {
-    const { data, error } = await supabase.rpc("claim_challenge", { progress_id: p.id });
+    const { data, error } = await supabase.rpc("claim_challenge", { _progress_id: p.id });
     if (error) return toast.error(error.message);
     const r = data as any;
     toast.success(`+${r.reward.toLocaleString()} tokens claimed!`);
@@ -53,6 +58,8 @@ export function ChallengesPanel() {
   }
 
   return (
+    <>
+    {fire && <StreakFirePopout streak={fire.streak} reward={fire.reward} onDone={() => setFire(null)} />}
     <Card className="glass p-4 space-y-3">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-amber-300" />
@@ -116,5 +123,6 @@ export function ChallengesPanel() {
         })}
       </div>
     </Card>
+    </>
   );
 }

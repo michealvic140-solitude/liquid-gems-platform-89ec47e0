@@ -132,7 +132,7 @@ function PromoRedeem() {
     setBusy(true);
     try {
       const c = code.trim().toUpperCase();
-      const { data, error } = await supabase.rpc("redeem_promo_code", { code: c });
+      const { data, error } = await supabase.rpc("redeem_promo_code", { _code: c });
       if (error) throw error;
       const amount = (data as any)?.amount ?? 0;
       toast.success(`+${amount.toLocaleString()} tokens credited!`);

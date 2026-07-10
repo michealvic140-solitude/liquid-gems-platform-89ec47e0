@@ -72,6 +72,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" },
+      { name: "google-site-verification", content: "VmJKgEfwpQsNav2Nc0ItKNySizECxM7nnKuyxh-A5gM" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -157,28 +158,27 @@ import { BanGate } from "@/components/BanGate";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PopupAd } from "@/components/PopupAd";
 import { BetSlipFab } from "@/components/BetSlip";
-import { PageSpinner } from "@/components/PageSpinner";
-import { ReloadBroadcastListener } from "@/components/ReloadBroadcastListener";
+import { RouteProgress } from "@/components/RouteProgress";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  // Unregister any legacy service worker (push notifications skipped in this build)
+  // Service workers / push disabled in this build — unregister any lingering ones.
   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
     navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
   }
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BetSlipProvider>
           <ConfirmProvider>
             <MaintenanceGate>
-              <PageSpinner />
               <Outlet />
             </MaintenanceGate>
             <BanGate />
             <PopupAd />
             <BetSlipFab />
-            <ReloadBroadcastListener />
+            <RouteProgress />
             <Toaster />
           </ConfirmProvider>
         </BetSlipProvider>

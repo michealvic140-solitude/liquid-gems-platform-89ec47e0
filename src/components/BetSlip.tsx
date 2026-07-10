@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Ticket, X, Trash2, Coins, CheckCircle2, Copy, Share2, ExternalLink, Gem, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { DraggableFab } from "@/components/DraggableFab";
+import { showBetSuccess } from "@/components/BetSuccessPopout";
 
 export function BetSlipFab() {
   const { selections, open, setOpen } = useBetSlip();
@@ -53,26 +54,43 @@ function FabShell({ onClick, count }: { onClick: () => void; count: number }) {
 function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { selections, remove, clear, totalOdds, stake, setStake } = useBetSlip();
   const { user, profile, refresh } = useAuth();
-  const [minStake, setMinStake] = useState(2_000_000);
-  const [maxPayout, setMaxPayout] = useState(100_000_000);
+  const [realMinStake, setRealMinStake] = useState(2_000_000);
+  const [realMaxPayout, setRealMaxPayout] = useState(100_000_000);
+  const [virtMinStake, setVirtMinStake] = useState(100_000);
+  const [virtMaxPayout, setVirtMaxPayout] = useState(100_000_000);
+  const [futureMinStake, setFutureMinStake] = useState(1);
+  const [futureMaxPayout, setFutureMaxPayout] = useState(100_000_000);
+  const [futureMaxSel, setFutureMaxSel] = useState(1);
+  const [maxSelReal, setMaxSelReal] = useState(20);
+  const [maxSelVirt, setMaxSelVirt] = useState(20);
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState<any>(null);
+  const [allowRebet, setAllowRebet] = useState(true);
   const confirm = useConfirm();
   const nav = useNavigate();
-  const isVirtualTicket = selections.length > 0 && selections.every((s) => s.is_virtual);
-  const isMixedTicket = selections.some((s) => s.is_virtual) && selections.some((s) => !s.is_virtual);
-  const requiredSelections = isVirtualTicket ? 1 : 2;
 
   useEffect(() => {
-    supabase.from("app_settings").select("*").eq("id", 1).maybeSingle()
+    supabase.from("app_settings").select("min_stake,max_payout,virtual_min_stake,virtual_max_payout,max_selections_per_ticket,virtual_max_selections,futures_min_stake,futures_max_payout,futures_max_selections,allow_rebet").eq("id", 1).maybeSingle()
       .then(({ data }) => {
-        const nextMin = isVirtualTicket ? (data as any)?.virtual_min_stake : (data as any)?.min_stake;
-        const nextMax = isVirtualTicket ? (data as any)?.virtual_max_payout : (data as any)?.max_payout;
-        if (nextMin !== null && nextMin !== undefined) setMinStake(Number(nextMin));
-        if (nextMax !== null && nextMax !== undefined) setMaxPayout(Number(nextMax));
+        if (data?.min_stake) setRealMinStake(Number(data.min_stake));
+        if ((data as any)?.max_payout) setRealMaxPayout(Number((data as any).max_payout));
+        if ((data as any)?.virtual_min_stake) setVirtMinStake(Number((data as any).virtual_min_stake));
+        if ((data as any)?.virtual_max_payout) setVirtMaxPayout(Number((data as any).virtual_max_payout));
+        if ((data as any)?.max_selections_per_ticket) setMaxSelReal(Number((data as any).max_selections_per_ticket));
+        if ((data as any)?.virtual_max_selections) setMaxSelVirt(Number((data as any).virtual_max_selections));
+        if ((data as any)?.futures_min_stake) setFutureMinStake(Number((data as any).futures_min_stake));
+        if ((data as any)?.futures_max_payout) setFutureMaxPayout(Number((data as any).futures_max_payout));
+        if ((data as any)?.futures_max_selections) setFutureMaxSel(Number((data as any).futures_max_selections));
+        if (typeof (data as any)?.allow_rebet === "boolean") setAllowRebet((data as any).allow_rebet);
       });
-  }, [open, isVirtualTicket]);
+  }, [open]);
 
+  const isVirtualTicket = selections.length > 0 && selections.every((s) => s.is_virtual);
+  const isFutureTicket = selections.length > 0 && selections.every((s) => s.is_future);
+  const isMixedTicket = new Set(selections.map((s) => s.is_virtual ? "virtual" : s.is_future ? "future" : "real")).size > 1;
+  const minStake = isVirtualTicket ? virtMinStake : isFutureTicket ? futureMinStake : realMinStake;
+  const maxPayout = isVirtualTicket ? virtMaxPayout : isFutureTicket ? futureMaxPayout : realMaxPayout;
+  const maxSel = isVirtualTicket ? maxSelVirt : isFutureTicket ? futureMaxSel : maxSelReal;
   const rawPayout = Math.floor(stake * totalOdds);
   const payout = Math.min(rawPayout, maxPayout);
   const capped = rawPayout > maxPayout;
@@ -81,12 +99,50 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
     if (!user || !profile) { nav({ to: "/login" }); return; }
     if (selections.length === 0) return;
     if (isMixedTicket) {
-      toast.error("Virtual and real match selections must be placed on separate slips.");
+      toast.error("Virtual, futures and real match selections must be placed on separate slips.");
       return;
     }
-    if (selections.length < requiredSelections) {
-      toast.error(`Add at least ${requiredSelections} selection${requiredSelections === 1 ? "" : "s"} to place this bet.`);
+    if (!isVirtualTicket && !isFutureTicket && selections.length < 2) {
+      toast.error(`Add at least 2 selections to place a bet (you have ${selections.length}).`);
       return;
+    }
+    if (selections.length > maxSel) {
+      toast.error(`Maximum ${maxSel} selections per ticket (you have ${selections.length}).`);
+      return;
+    }
+    // Re-bet guardrail: when admins turn OFF re-betting, members may not stack
+    // another active ticket on a match they already have an open bet on.
+    if (!allowRebet && !isVirtualTicket) {
+      const matchIds = Array.from(new Set(selections.map((s) => s.match_id)));
+      const { data: prior } = await supabase
+        .from("bet_selections")
+        .select("match_id, bets!inner(user_id,status)")
+        .in("match_id", matchIds)
+        .eq("bets.user_id", user.id);
+      const active = (prior ?? []).filter((p: any) => p.bets?.status === "open");
+      if (active.length) {
+        toast.error("Re-betting is turned off. You already have an active ticket on one of these matches.");
+        return;
+      }
+    }
+    // Future tournaments: allow many tickets, but block betting the same contender twice when enabled by admin.
+    if (isFutureTicket) {
+      const matchIds = Array.from(new Set(selections.map((s) => s.match_id)));
+      const { data: ms } = await supabase.from("matches").select("id,restrict_repeat_contender").in("id", matchIds);
+      const restricted = new Set((ms ?? []).filter((m: any) => m.restrict_repeat_contender).map((m: any) => m.id));
+      const restrictedSels = selections.filter((s) => restricted.has(s.match_id));
+      if (restrictedSels.length) {
+        const { data: prior } = await supabase
+          .from("bet_selections")
+          .select("odd_id, selection_label, bets!inner(user_id,status)")
+          .in("odd_id", restrictedSels.map((s) => s.odd_id))
+          .eq("bets.user_id", user.id);
+        const blocked = (prior ?? []).filter((p: any) => !["void", "refunded"].includes(p.bets?.status));
+        if (blocked.length) {
+          toast.error(`You already have a ticket on ${blocked[0].selection_label}. You can't bet the same contender twice in this tournament.`);
+          return;
+        }
+      }
     }
     if (profile.is_restricted) { toast.error("Your account is restricted from betting."); return; }
     if (stake < minStake) { toast.error(`Minimum stake is ${minStake.toLocaleString()} tokens`); return; }
@@ -107,7 +163,6 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
           _stake: stake,
         });
         if (error) throw error;
-        if (!placedVirtual?.ok) throw new Error(formatBetError(placedVirtual?.error, placedVirtual));
         const betId = placedVirtual?.bet_id;
         const { data: freshBet } = betId
           ? await supabase.from("bets").select("*").eq("id", betId).maybeSingle()
@@ -116,22 +171,45 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         const snapshot = { ...(freshBet ?? placedVirtual), id: betId, _selections: selections, _payout: placedVirtual?.payout ?? payout, _is_virtual: true };
         clear(); refresh();
         setPlaced(snapshot);
+        showBetSuccess({
+          betId,
+          trackingId: placedVirtual?.tracking_id ?? snapshot?.tracking_id,
+          bookingCode: snapshot?.booking_code,
+          stake,
+          potentialWin: Number(placedVirtual?.payout ?? payout),
+          kind: "Virtual matches",
+        });
         return;
       }
-      const { data: placedReal, error: be } = await (supabase as any).rpc("place_bet_ticket", {
-        _selections: selections.map((s) => ({ odd_id: s.odd_id })),
-        _stake: stake,
-      });
+      const { data: bet, error: be } = await supabase.from("bets").insert({
+        user_id: user.id, stake, total_odds: totalOdds, potential_payout: payout, status: "open",
+      }).select().single();
       if (be) throw be;
-      if (!placedReal?.ok) throw new Error(formatBetError(placedReal?.error, placedReal));
-      const betId = placedReal?.bet_id;
-      const { data: freshBet } = betId
-        ? await supabase.from("bets").select("*").eq("id", betId).maybeSingle()
-        : { data: null } as any;
-      toast.success(`Bet placed! Ticket ${placedReal?.tracking_id ?? freshBet?.tracking_id ?? ""}`);
-      const snapshot = { ...(freshBet ?? placedReal), id: betId, _selections: selections, _payout: placedReal?.payout ?? payout, _is_virtual: false };
+      const rows = selections.map((s) => ({
+        bet_id: bet.id, match_id: s.match_id, market_id: s.market_id, odd_id: s.odd_id,
+        locked_odds: s.odds, selection_label: s.selection_label,
+      }));
+      const { error: se } = await supabase.from("bet_selections").insert(rows);
+      if (se) {
+        // rollback bet so we don't leave an orphan
+        await supabase.from("bets").delete().eq("id", bet.id);
+        throw se;
+      }
+      // deduct tokens
+      await supabase.from("profiles").update({ token_balance: (profile.token_balance ?? 0) - stake }).eq("id", user.id);
+      await supabase.from("notifications").insert({ user_id: user.id, title: "Bet placed", body: `Ticket ${bet.tracking_id} · ${stake.toLocaleString()} tokens staked.`, link: `/ticket/${bet.id}` });
+      toast.success(`Bet placed! Ticket ${bet.tracking_id}`);
+      const snapshot = { ...bet, _selections: selections, _payout: payout, _is_virtual: false };
       clear(); refresh();
       setPlaced(snapshot);
+      showBetSuccess({
+        betId: bet.id,
+        trackingId: bet.tracking_id,
+        bookingCode: bet.booking_code,
+        stake,
+        potentialWin: Number(payout),
+        kind: isFutureTicket ? "Tournament futures" : "Real matches",
+      });
     } catch (e: any) {
       toast.error(e.message || "Failed to place bet");
     } finally { setSubmitting(false); }
@@ -149,14 +227,20 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
               {placed ? <CheckCircle2 className="h-5 w-5" /> : <Ticket className="h-5 w-5" />}
             </span>
             <span className="leading-tight">
-              <span className="block text-[10px] uppercase tracking-[0.3em] text-muted-foreground">{isVirtualTicket ? "Virtual ticket desk" : "Real match ticket desk"}</span>
+              <span className="block text-[10px] uppercase tracking-[0.3em] text-muted-foreground">{isVirtualTicket ? "Virtual ticket desk" : isFutureTicket ? "Futures ticket desk" : "Real match ticket desk"}</span>
               <span className="block text-2xl gradient-gold-text">{placed ? "Ticket Placed" : "Bet Slip"}</span>
             </span>
           </SheetTitle>
         </SheetHeader>
 
         {placed ? (
-          <PlacedPreview bet={placed} onView={() => { closeAll(); nav({ to: "/ticket/$id", params: { id: placed.id } }); }} onClose={closeAll} />
+          <PlacedPreview
+            bet={placed}
+            allowAgain={allowRebet}
+            onAgain={() => { setPlaced(null); onClose(); }}
+            onView={() => { closeAll(); nav({ to: "/ticket/$id", params: { id: placed.id } }); }}
+            onClose={closeAll}
+          />
         ) : (
         <div className="flex min-h-0 flex-col pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         <div className="px-6 mt-4 space-y-3 max-h-none overflow-visible pr-4">
@@ -215,9 +299,9 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={clear} className="flex-1"><Trash2 className="h-4 w-4 mr-1" />Clear</Button>
-              <Button className="btn-luxury flex-1" disabled={submitting || selections.length < requiredSelections} onClick={place}>{submitting ? "Placing…" : `Place Bet${selections.length < requiredSelections ? ` (need ${requiredSelections - selections.length} more)` : ""}`}</Button>
+              <Button className="btn-luxury flex-1" disabled={submitting || (!isVirtualTicket && !isFutureTicket && selections.length < 2)} onClick={place}>{submitting ? "Placing…" : `Place Bet${(!isVirtualTicket && !isFutureTicket && selections.length < 2) ? ` (need ${2 - selections.length} more)` : ""}`}</Button>
             </div>
-            <p className="text-[10px] text-muted-foreground text-center">{isVirtualTicket ? "Virtual tickets can be placed with 1 selection." : "Minimum 2 selections required."} Tokens are deducted on placement. Cash-out available only after the match ends and your bet wins.</p>
+            <p className="text-[10px] text-muted-foreground text-center">{isFutureTicket ? `Futures tickets can hold up to ${futureMaxSel} selection${futureMaxSel === 1 ? "" : "s"}. Tokens are deducted on placement and paid after admin settlement.` : "Minimum 2 selections required. Tokens are deducted on placement. Cash-out available only after the match ends and your bet wins."}</p>
           </div>
         )}
         </div>
@@ -227,18 +311,7 @@ function BetSlipDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
-function formatBetError(code?: string, payload?: any) {
-  if (!code) return "Failed to place bet";
-  if (code === "insufficient_balance") return "Insufficient balance";
-  if (code === "account_restricted") return "Your account is restricted from betting.";
-  if (code === "round_locked") return "This virtual round has locked. Pick the next open round.";
-  if (code === "match_locked") return "One of these matches has already locked.";
-  if (code === "not_enough_selections") return `Add at least ${payload?.min ?? 1} selection(s).`;
-  if (code === "min_stake") return `Minimum stake is ${Number(payload?.min ?? 0).toLocaleString()} tokens.`;
-  return code.replaceAll("_", " ");
-}
-
-function PlacedPreview({ bet, onView, onClose }: { bet: any; onView: () => void; onClose: () => void }) {
+function PlacedPreview({ bet, onView, onClose, allowAgain, onAgain }: { bet: any; onView: () => void; onClose: () => void; allowAgain?: boolean; onAgain?: () => void }) {
   const sels = bet._selections ?? [];
   function copy(t: string) { navigator.clipboard.writeText(t); toast.success("Copied"); }
   async function share() {
@@ -272,7 +345,7 @@ function PlacedPreview({ bet, onView, onClose }: { bet: any; onView: () => void;
         </div>
         <div className="rounded-xl bg-muted/40 p-3 col-span-2">
           <div className="text-[10px] uppercase text-muted-foreground">Voucher Type</div>
-          <div className="font-bold">{bet._is_virtual ? "Virtual matches" : "Real matches"}</div>
+          <div className="font-bold">{bet._is_virtual ? "Virtual matches" : sels.some((s: any) => s.is_future) ? "Tournament futures" : "Real matches"}</div>
         </div>
       </div>
       <div className="space-y-2 max-h-[28vh] overflow-y-auto pr-1">
@@ -288,6 +361,11 @@ function PlacedPreview({ bet, onView, onClose }: { bet: any; onView: () => void;
         <Button variant="outline" onClick={share}><Share2 className="h-4 w-4 mr-1" />Share</Button>
         <Button className="btn-luxury" onClick={onView}><ExternalLink className="h-4 w-4 mr-1" />View Ticket</Button>
       </div>
+      {allowAgain && onAgain && (
+        <Button className="w-full btn-luxury" onClick={onAgain}>
+          <Ticket className="h-4 w-4 mr-1" />Place another bet
+        </Button>
+      )}
       <Button variant="ghost" className="w-full" onClick={onClose}>Close</Button>
     </div>
   );
