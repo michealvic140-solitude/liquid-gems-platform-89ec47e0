@@ -1,23 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy, Upload, X } from "lucide-react";
+import { Trophy, Medal as MedalIcon } from "lucide-react";
+import { loadStandings, type LbRow } from "@/lib/leaderboard";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
-import { resolveStorageUrl } from "@/lib/storage-media";
+import leaderboardHeaderAsset from "@/assets/leaderboard-header.png.asset.json";
 
 export const Route = createFileRoute("/leaderboard")({
   head: () => ({
     meta: [
       { title: "Leaderboard — Lomita Shooters League" },
-      { name: "description", content: "See the top shooters and top gangs ranked by season points, wins, and tokens won across the Lomita Shooters League." },
+      { name: "description", content: "See the top shooters and top gangs ranked by total score, season points, wins, and tokens won across the Lomita Shooters League." },
       { property: "og:title", content: "LSL Leaderboard — Top Shooters & Gangs" },
-      { property: "og:description", content: "Top shooters and gangs ranked by season points, wins, and tokens won." },
+      { property: "og:description", content: "Top shooters and gangs ranked by total score, season points, wins, and tokens won." },
       { property: "og:url", content: "https://lslonlinebetting.lovable.app/leaderboard" },
     ],
     links: [{ rel: "canonical", href: "https://lslonlinebetting.lovable.app/leaderboard" }],
@@ -35,260 +31,141 @@ export const Route = createFileRoute("/leaderboard")({
   component: Page,
 });
 
-function rankIcon(i: number) {
-  if (i === 0) return "🥇"; if (i === 1) return "🥈"; if (i === 2) return "🥉";
-  return `#${i + 1}`;
+function Medal({ i }: { i: number }) {
+  const tiers = ["from-amber-300 to-yellow-600", "from-slate-200 to-slate-400", "from-amber-600 to-orange-800"];
+  const medalColors = ["text-yellow-300", "text-slate-200", "text-amber-600"];
+  if (i < 3) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className={`inline-grid place-items-center h-8 w-8 rounded-lg bg-gradient-to-b ${tiers[i]} text-black font-black text-sm shadow-[0_0_14px_-2px_rgba(212,175,55,0.6)] border border-white/30`}>
+          {i + 1}
+        </span>
+        <MedalIcon className={`h-5 w-5 ${medalColors[i]} drop-shadow-[0_0_6px_rgba(212,175,55,0.6)]`} />
+      </span>
+    );
+  }
+  return <span className="text-sm font-bold text-muted-foreground tabular-nums">{i + 1}</span>;
 }
 
-type Stats = { name: string; top_player?: string; W: number; L: number; D: number; PTS: number; P: number; manual_rank?: number | null };
-
 function Page() {
-  const [shooters, setShooters] = useState<Stats[]>([]);
-  const [gangs, setGangs] = useState<Stats[]>([]);
-  const { isAdmin } = useAuth();
-  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
-  const [bannerDescription, setBannerDescription] = useState<string>("");
-  const [bannerSigned, setBannerSigned] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [draftDesc, setDraftDesc] = useState("");
-
-  const loadBanner = async () => {
-    const { data } = await supabase
-      .from("app_settings")
-      .select("leaderboard_banner_url,leaderboard_banner_description")
-      .eq("id", 1)
-      .maybeSingle();
-    const url = (data as any)?.leaderboard_banner_url ?? null;
-    const desc = (data as any)?.leaderboard_banner_description ?? "";
-    setBannerUrl(url);
-    setBannerDescription(desc);
-    setDraftDesc(desc);
-    if (url) {
-      const signed = await resolveStorageUrl("highlights", url);
-      setBannerSigned(signed ?? url);
-    } else {
-      setBannerSigned(null);
-    }
-  };
-
-  useEffect(() => { loadBanner(); }, []);
-
-  async function uploadBanner(file: File) {
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `leaderboard/banner-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("highlights").upload(path, file, { upsert: true, contentType: file.type });
-      if (upErr) throw upErr;
-      const { error: dbErr } = await (supabase as any).from("app_settings")
-        .update({ leaderboard_banner_url: path, leaderboard_banner_description: draftDesc })
-        .eq("id", 1);
-      if (dbErr) throw dbErr;
-      toast.success("Leaderboard banner updated");
-      setEditing(false);
-      await loadBanner();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Upload failed");
-    } finally { setUploading(false); }
-  }
-
-  async function saveDescription() {
-    const { error } = await (supabase as any).from("app_settings")
-      .update({ leaderboard_banner_description: draftDesc })
-      .eq("id", 1);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Description saved");
-    setEditing(false);
-    await loadBanner();
-  }
-
-  async function removeBanner() {
-    const { error } = await (supabase as any).from("app_settings")
-      .update({ leaderboard_banner_url: null, leaderboard_banner_description: null })
-      .eq("id", 1);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Banner removed");
-    await loadBanner();
-  }
+  const [shooters, setShooters] = useState<LbRow[]>([]);
+  const [gangs, setGangs] = useState<LbRow[]>([]);
+  const [headerUrl, setHeaderUrl] = useState<string | null>(leaderboardHeaderAsset.url);
 
   useEffect(() => {
+    const run = async () => {
+      const { gangs, shooters } = await loadStandings();
+      setGangs(gangs);
+      setShooters(shooters);
+    };
+    run();
+    const ch = supabase
+      .channel("leaderboard-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leaderboard_overrides" }, run)
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, run)
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, () =>
+        supabase.from("app_settings").select("leaderboard_header_url").eq("id", 1).maybeSingle().then(({ data }) => setHeaderUrl((data as any)?.leaderboard_header_url || leaderboardHeaderAsset.url)),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     (async () => {
-      // matches finished
-      const { data: matches } = await supabase
-        .from("matches")
-        .select("home_team_id,away_team_id,home_score,away_score,winner_team_id,status,is_virtual")
-        .eq("status", "ended")
-        .eq("is_virtual", false);
-      const { data: teams } = await supabase.from("teams").select("id,name");
-      const { data: players } = await supabase.from("players").select("id,name,team_id");
-      const { data: overrides } = await supabase.from("leaderboard_overrides").select("*");
-
-      const teamMap = new Map<string, string>(); (teams ?? []).forEach((t) => teamMap.set(t.id, t.name));
-      const teamPlayers = new Map<string, string[]>();
-      (players ?? []).forEach((p) => { if (!p.team_id) return; const a = teamPlayers.get(p.team_id) ?? []; a.push(p.name); teamPlayers.set(p.team_id, a); });
-
-      const gangAgg = new Map<string, Stats>();
-      const playerAgg = new Map<string, Stats>();
-
-      (matches ?? []).forEach((m: any) => {
-        for (const side of ["home", "away"] as const) {
-          const tid = side === "home" ? m.home_team_id : m.away_team_id;
-          const tname = teamMap.get(tid) || "Team";
-          const won = m.winner_team_id === tid;
-          const draw = m.winner_team_id == null;
-          const cur = gangAgg.get(tname) ?? { name: tname, top_player: (teamPlayers.get(tid) ?? [])[0], W: 0, L: 0, D: 0, PTS: 0, P: 0 };
-          cur.P += 1;
-          if (draw) { cur.D += 1; cur.PTS += 1; }
-          else if (won) { cur.W += 1; cur.PTS += 3; }
-          else { cur.L += 1; }
-          gangAgg.set(tname, cur);
-          // shooters: each player on team
-          (teamPlayers.get(tid) ?? []).forEach((pname) => {
-            const pc = playerAgg.get(pname) ?? { name: pname, W: 0, L: 0, D: 0, PTS: 0, P: 0 };
-            pc.P += 1;
-            if (draw) { pc.D += 1; pc.PTS += 1; }
-            else if (won) { pc.W += 1; pc.PTS += 3; }
-            else { pc.L += 1; }
-            playerAgg.set(pname, pc);
-          });
-        }
-      });
-
-      // apply overrides
-      (overrides ?? []).forEach((o: any) => {
-        const target = o.kind === "gang" ? gangAgg : playerAgg;
-        target.set(o.name, {
-          name: o.name, top_player: o.top_player ?? undefined,
-          W: o.wins, L: o.losses, D: o.draws, P: o.played, PTS: o.points,
-          manual_rank: o.manual_rank,
-        });
-      });
-
-      const sortFn = (a: Stats, b: Stats) => {
-        if (a.manual_rank != null && b.manual_rank != null) return a.manual_rank - b.manual_rank;
-        if (a.manual_rank != null) return -1;
-        if (b.manual_rank != null) return 1;
-        return b.PTS - a.PTS || b.W - a.W;
-      };
-      setGangs(Array.from(gangAgg.values()).sort(sortFn));
-      setShooters(Array.from(playerAgg.values()).sort(sortFn));
+      try {
+        const { data, error } = await supabase.from("app_settings").select("leaderboard_header_url").eq("id", 1).maybeSingle();
+        if (active && !error) setHeaderUrl((data as any)?.leaderboard_header_url || leaderboardHeaderAsset.url);
+      } catch { /* ignore */ }
     })();
+    return () => { active = false; };
   }, []);
 
   return (
     <Layout>
-      <div className="container py-10">
-        {(bannerSigned || isAdmin) && (
-          <Card className="glass-strong overflow-hidden mb-6 border-primary/30">
-            {bannerSigned ? (
-              <div className="relative w-full">
-                <img src={bannerSigned} alt={bannerDescription || "Leaderboard banner"} className="w-full max-h-[420px] object-cover" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 via-background/60 to-transparent p-4 sm:p-6">
-                  {bannerDescription && <p className="text-sm sm:text-base text-foreground/90 max-w-3xl drop-shadow">{bannerDescription}</p>}
-                </div>
-                {isAdmin && (
-                  <div className="absolute top-2 right-2 flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</Button>
-                    <Button size="sm" variant="destructive" onClick={removeBanner}><X className="h-3 w-3 mr-1" />Remove</Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              isAdmin && (
-                <div className="p-6 text-center text-sm text-muted-foreground">
-                  No leaderboard banner yet — upload one below to feature it at the top of this page.
-                </div>
-              )
-            )}
-            {isAdmin && (editing || !bannerSigned) && (
-              <div className="p-4 space-y-3 border-t border-border/40 bg-card/30">
-                <Textarea
-                  placeholder="Banner description (visible to everyone)…"
-                  value={draftDesc}
-                  onChange={(e) => setDraftDesc(e.target.value)}
-                  className="min-h-[80px]"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex">
-                    <input type="file" accept="image/*" hidden disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); }} />
-                    <span className={`inline-flex items-center gap-1 px-3 py-2 rounded-md text-xs font-bold cursor-pointer btn-luxury ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
-                      <Upload className="h-3.5 w-3.5" />{uploading ? "Uploading…" : (bannerSigned ? "Replace banner" : "Upload banner")}
-                    </span>
-                  </label>
-                  {bannerSigned && <Button size="sm" variant="outline" onClick={saveDescription}>Save description</Button>}
-                </div>
-              </div>
-            )}
-          </Card>
+      <div className="container py-8 max-w-5xl">
+        {headerUrl ? (
+          <div className="relative mb-6 rounded-2xl overflow-hidden border-2 border-amber-400/60 shadow-[0_0_40px_-10px_rgba(212,175,55,0.55)]">
+            <img src={headerUrl} alt="Lomita Shooters League Leaderboard" className="w-full h-auto block" />
+          </div>
+        ) : (
+          <div className="relative mb-6 rounded-2xl overflow-hidden bg-black/20 backdrop-blur-[2px] border-2 border-amber-400/60 shadow-[0_0_40px_-10px_rgba(212,175,55,0.55)]">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/10 to-transparent" />
+            <div className="relative flex items-center gap-3 px-5 py-5">
+              <span className="grid place-items-center h-12 w-12 rounded-xl border border-amber-400/40 bg-black/40 shadow-[0_0_20px_-4px_rgba(212,175,55,0.6)]">
+                <Trophy className="h-6 w-6 text-amber-300" />
+              </span>
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight gradient-gold-text drop-shadow-[0_2px_8px_rgba(212,175,55,0.3)]">LEADERBOARD</h1>
+            </div>
+          </div>
         )}
-        <div className="flex items-center gap-2 mb-6">
-          <Trophy className="h-7 w-7 text-primary" />
-          <h1 className="text-3xl font-bold gradient-gold-text">Leaderboard</h1>
-        </div>
+
         <Tabs defaultValue="gangs">
-          <TabsList>
+          <TabsList className="bg-black/25 backdrop-blur-[2px] border border-amber-400/40">
             <TabsTrigger value="gangs">Top Gangs / Factions</TabsTrigger>
             <TabsTrigger value="shooters">Top Shooters</TabsTrigger>
           </TabsList>
 
           <TabsContent value="gangs" className="mt-4">
-            <Card className="glass overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-card/40">
-                  <tr className="text-left text-xs uppercase tracking-widest text-muted-foreground">
-                    <Th>Rank</Th><Th>Gang / Faction</Th><Th>Top Player</Th>
-                    <Th right>W</Th><Th right>L</Th><Th right>D</Th><Th right>P</Th><Th right>PTS</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {gangs.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">No data yet.</td></tr>}
-                  {gangs.map((g, i) => (
-                    <tr key={g.name} className="border-b border-border/40 hover:bg-primary/5">
-                      <Td><span className="text-lg font-bold">{rankIcon(i)}</span></Td>
-                      <Td><span className="font-bold">{g.name}</span></Td>
-                      <Td><span className="text-muted-foreground">{g.top_player || "—"}</span></Td>
-                      <Td right><span className="text-emerald-400 font-bold">{g.W}</span></Td>
-                      <Td right><span className="text-destructive font-bold">{g.L}</span></Td>
-                      <Td right><span className="text-amber-400 font-bold">{g.D}</span></Td>
-                      <Td right>{g.P}</Td>
-                      <Td right><span className="font-bold text-primary">{g.PTS}</span></Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <Board rows={gangs} firstCol="Gang / Faction" secondCol="Top Player" pick={(g) => g.top_player || "—"} emptyText="No data yet." />
           </TabsContent>
 
           <TabsContent value="shooters" className="mt-4">
-            <Card className="glass overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-card/40">
-                  <tr className="text-left text-xs uppercase tracking-widest text-muted-foreground">
-                    <Th>Rank</Th><Th>Player</Th>
-                    <Th right>Won</Th><Th right>Lost</Th><Th right>Total</Th><Th right>PTS</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shooters.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No shooters yet.</td></tr>}
-                  {shooters.map((p, i) => (
-                    <tr key={p.name} className="border-b border-border/40 hover:bg-primary/5">
-                      <Td><span className="text-lg font-bold">{rankIcon(i)}</span></Td>
-                      <Td><span className="font-bold">{p.name}</span></Td>
-                      <Td right><span className="text-emerald-400 font-bold">{p.W}</span></Td>
-                      <Td right><span className="text-destructive font-bold">{p.L}</span></Td>
-                      <Td right>{p.P}</Td>
-                      <Td right><span className="font-bold text-primary">{p.PTS}</span></Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <Board rows={shooters} firstCol="Gang & Faction" secondCol="Player" pick={(p) => p.name} firstPick={(p) => p.gang_faction || "—"} emptyText="No shooters yet." />
           </TabsContent>
         </Tabs>
       </div>
     </Layout>
   );
+}
+
+function Board({
+  rows, firstCol, secondCol, pick, firstPick, emptyText,
+}: {
+  rows: LbRow[];
+  firstCol: string;
+  secondCol: string;
+  pick: (r: LbRow) => string;
+  firstPick?: (r: LbRow) => string;
+  emptyText: string;
+}) {
+  return (
+    <div className="relative rounded-2xl overflow-hidden bg-black/15 backdrop-blur-[2px] border-2 border-amber-400/55 shadow-[0_0_40px_-12px_rgba(212,175,55,0.5)]">
+      <div className="relative overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-widest text-amber-200/80 border-b border-amber-400/30 bg-black/20">
+              <Th>Rank</Th><Th>{firstCol}</Th><Th>{secondCol}</Th>
+              <Th right>TS</Th><Th right>W</Th><Th right>L</Th><Th right>D</Th><Th right>P</Th><Th right>PTS</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">{emptyText}</td></tr>}
+            {rows.map((r, i) => (
+              <tr key={r.name} className="border-b border-amber-400/10 hover:bg-amber-400/10 transition-colors">
+                <Td><Medal i={i} /></Td>
+                <Td>{firstPick ? <span className="font-bold text-primary/90">{firstPick(r)}</span> : <span className="font-bold">{pick(r)}</span>}</Td>
+                <Td><span className={firstPick ? "font-bold" : "text-muted-foreground"}>{firstPick ? pick(r) : (r.top_player || "—")}</span></Td>
+                <Td right><Pill tone="amber">{r.TS}</Pill></Td>
+                <Td right><span className="text-emerald-400 font-bold">{r.W}</span></Td>
+                <Td right><span className="text-destructive font-bold">{r.L}</span></Td>
+                <Td right><span className="text-amber-400 font-bold">{r.D}</span></Td>
+                <Td right><span className="text-muted-foreground">{r.P}</span></Td>
+                <Td right><Pill tone="emerald">{r.PTS}</Pill></Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Pill({ children, tone }: { children: React.ReactNode; tone: "amber" | "emerald" }) {
+  const cls = tone === "amber"
+    ? "border-amber-400/40 text-amber-200 bg-amber-400/10"
+    : "border-emerald-400/40 text-emerald-300 bg-emerald-400/10";
+  return <span className={`inline-grid place-items-center min-w-[40px] rounded-md border px-2 py-1 font-black tabular-nums ${cls}`}>{children}</span>;
 }
 
 function Th({ children, right }: { children: React.ReactNode; right?: boolean }) { return <th className={`px-4 py-3 ${right ? "text-right" : ""}`}>{children}</th>; }

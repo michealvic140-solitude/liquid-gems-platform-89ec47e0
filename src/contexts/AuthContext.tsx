@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { parseUA } from "@/lib/ua";
 
 export type AppRole = "viewer" | "shooter" | "gang_leader" | "registered" | "sponsor" | "moderator" | "admin";
 
@@ -37,7 +36,7 @@ export interface Profile {
   profile_banner_url?: string | null;
   profile_title?: string | null;
   showcase_achievement_ids?: string[];
-  last_kicked_at?: string | null;
+  force_logout_at?: string | null;
 }
 
 interface AuthCtx {
@@ -60,14 +59,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
-  const lastKickRef = useRef<string | null>(null);
 
   const loadUserData = async (uid: string) => {
     const [{ data: p }, { data: r }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", uid),
     ]);
-    lastKickRef.current = (p as Profile | null)?.last_kicked_at ?? null;
     setProfile(p as Profile | null);
     setRoles((r ?? []).map((x: any) => x.role));
   };
@@ -94,16 +91,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
         (payload) => {
           const next = payload.new as Profile;
-          const wasKicked = !!next?.last_kicked_at && lastKickRef.current !== next.last_kicked_at;
-          lastKickRef.current = next?.last_kicked_at ?? null;
           setProfile((prev) => ({ ...(prev as Profile), ...next }));
-          // Auto kick-out if user was banned or explicitly kicked by an admin.
+          // Auto kick-out if user just got banned or an admin forces a session reset.
+          const wasKicked = !!next?.force_logout_at && next.force_logout_at !== (profile as any)?.force_logout_at;
           if (next?.is_banned || wasKicked) {
             supabase.auth.signOut().then(() => {
               if (typeof window !== "undefined") window.location.href = next?.is_banned ? "/login?banned=1" : "/login?kicked=1";
             });
           }
         })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "token_transactions", filter: `user_id=eq.${user.id}` },
+        () => loadUserData(user.id))
       .on("postgres_changes", { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${user.id}` },
         () => loadUserData(user.id))
       .subscribe();
@@ -114,22 +112,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
     let stopped = false;
-    const startedAt = new Date().toISOString();
-    const ua = navigator.userAgent.slice(0, 500);
-    const parsed = parseUA(ua);
     const ping = async () => {
       if (stopped) return;
       try {
         await supabase.from("user_sessions").upsert({
           user_id: user.id,
           last_seen: new Date().toISOString(),
-          session_start: startedAt,
-          signed_in_at: startedAt,
           route: window.location.pathname,
-          user_agent: ua.slice(0, 255),
-          device_type: parsed.device_type,
-          browser: parsed.browser,
-          os: parsed.os,
+          user_agent: navigator.userAgent.slice(0, 255),
         }, { onConflict: "user_id" });
       } catch {}
     };

@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy } from "lucide-react";
-import { resolveStorageUrl } from "@/lib/storage-media";
 
 function seasonDiff(now: number, target: number) {
   let s = Math.max(0, Math.floor((target - now) / 1000));
@@ -11,7 +10,7 @@ function seasonDiff(now: number, target: number) {
   const h = Math.floor(s / 3600); s -= h * 3600;
   const m = Math.floor(s / 60); s -= m * 60;
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d)}/${pad(h)}/${pad(m)}/${pad(s)}`;
+  return `${pad(d)}:${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 export function SeasonBanner() {
@@ -21,8 +20,8 @@ export function SeasonBanner() {
 
   useEffect(() => {
     const load = async () => {
-        const { data: s } = await (supabase as any).from("seasons_public").select("*").eq("is_active", true).order("starts_at", { ascending: false }).limit(1).maybeSingle();
-        setSeason(s ? { ...s, banner_signed_url: await resolveStorageUrl("season-banners", (s as any).banner_url) } : s);
+      const { data: s } = await supabase.from("seasons").select("*").eq("is_active", true).order("starts_at", { ascending: false }).limit(1).maybeSingle();
+      setSeason(s);
       if (s) {
         const { data: pts } = await supabase.from("season_points").select("*, profiles:user_id(full_name, ingame_name, gang_name)").eq("season_id", (s as any).id).order("points", { ascending: false }).limit(5);
         setTop(pts ?? []);
@@ -40,12 +39,12 @@ export function SeasonBanner() {
 
   if (!season) return null;
   const ends = new Date(season.ends_at);
-  const countdown = now === null ? "--/--/--/--" : seasonDiff(now, ends.getTime());
+  const countdown = now === null ? "--:--:--:--" : seasonDiff(now, ends.getTime());
 
   return (
     <section className="container mt-6">
       <Card className="glass-strong overflow-hidden border-primary/40">
-        {(season.banner_signed_url || season.banner_url) && <img src={season.banner_signed_url || season.banner_url} alt="" className="w-full h-32 object-cover opacity-60" />}
+        {season.banner_url && <img src={season.banner_url} alt="" className="w-full h-32 object-cover opacity-60" />}
         <div className="p-5 grid md:grid-cols-[1fr_auto] gap-4 items-center">
           <div>
             <Badge variant="outline" className="border-primary/40 text-primary mb-2">
@@ -61,7 +60,7 @@ export function SeasonBanner() {
               >
                 {countdown}
               </span>
-              <span className="text-[10px] text-muted-foreground">DD/HH/MM/SS · ends {ends.toLocaleDateString()}</span>
+              <span className="text-[10px] text-muted-foreground">DD:HH:MM:SS · ends {ends.toLocaleDateString()}</span>
             </div>
           </div>
           {top.length > 0 && (

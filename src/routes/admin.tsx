@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
@@ -15,15 +16,23 @@ import { Switch } from "@/components/ui/switch";
 import {
   Shield, Users, Trophy, Coins, Megaphone, Settings as SettingsIcon, Ticket, AlertTriangle,
   Calendar, Tag, Image as ImageIcon, BarChart3, History, Send, Plus, Trash2, Pencil, ChevronRight, ChevronLeft, Wallet, ListOrdered, Sparkles, ClipboardList, Lock, Pause, Play, Check, X, MessageSquare, Eye, RotateCw, Copy, Globe, MapPin, Smartphone, Clock, Filter,
-  Dice5, LogOut,
+  Dice5, LogOut, Crosshair, Target, Flame, ThumbsUp, ThumbsDown,
+  Gift, BellRing, GalleryHorizontalEnd, Gamepad2, Vote, ShoppingBag, LifeBuoy,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import lslLogo from "@/assets/lsl-logo.png";
+import tileBattle from "@/assets/tile-battle.jpg";
 import tileVirtual from "@/assets/tile-virtual.jpg";
-import tileVip from "@/assets/tile-vip.jpg";
 import tileChallenges from "@/assets/tile-challenges.jpg";
 import tileReferrals from "@/assets/tile-referrals.jpg";
-import tileHousewallet from "@/assets/tile-housewallet.jpg";
+import tileUsers from "@/assets/tile-users.jpg";
+import tileClans from "@/assets/tile-clans.jpg";
+const tileBattleAsset = { url: tileBattle };
+const tileVirtualAsset = { url: tileVirtual };
+const tileChallengesAsset = { url: tileChallenges };
+const tileUsersAsset = { url: tileUsers };
+const tileClansAsset = { url: tileClans };
+import adminConsoleSeed from "@/assets/admin-console-seed.jpg";
 import leagueSkullFire from "@/assets/league-skull-fire.jpg";
 import { Countdown } from "@/components/Countdown";
 import { useAuth, ROLE_LABELS, type AppRole } from "@/contexts/AuthContext";
@@ -34,22 +43,56 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
 } from "recharts";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { ActionConfirmDialog } from "@/components/ActionConfirmDialog";
+import { notifyAction, humanizeAction } from "@/lib/notify-action";
 import { SpotlightsAdminPanel } from "@/components/Spotlight";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { ImageSettingControl } from "@/components/admin/ImageSettingControl";
+import { ClansAdminPanel } from "@/components/admin/ClansAdminPanel";
+import { LotteryAdminPanel } from "@/components/admin/LotteryAdminPanel";
+import { GiftsSpinAdminPanel } from "@/components/admin/GiftsSpinAdminPanel";
+import { SurveysAdminPanel } from "@/components/admin/SurveysAdminPanel";
+import { PollsAdminPanel, ShopAdminPanel, FaqAdminPanel } from "@/components/admin/CommunityAdminPanel";
+import { NewsAdminPanel } from "@/components/admin/NewsAdminPanel";
+import { PushBroadcastPanel } from "@/components/admin/PushBroadcastPanel";
+import { HomeBannersAdminPanel } from "@/components/admin/HomeBannersAdminPanel";
+import { ArcadeAdminPanel } from "@/components/admin/ArcadeAdminPanel";
+import { CasinoHistoryPanel } from "@/components/admin/CasinoHistoryPanel";
+import { TopBetsPanel } from "@/components/admin/TopBetsPanel";
+import { TournamentAdminPanel } from "@/components/admin/TournamentAdminPanel";
+import { seedLegacyUsers } from "@/lib/seed-users.functions";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { resolveStorageUrl, withResolvedMedia } from "@/lib/storage-media";
+import { loadStandings, type LbRow } from "@/lib/leaderboard";
+
+// High-frequency admin actions that should not trigger a pop-out dialog.
+const SILENT_AUDIT_ACTIONS = new Set(["match_live_score", "match_presence"]);
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — LSL" }, { name: "description", content: "League administration dashboard." }] }),
   component: AdminPage,
 });
 
-function AdminPage() {
+export function AdminPage() {
   const { isAdmin, isMod, loading } = useAuth();
   const nav = useNavigate();
   const [alerts, setAlerts] = useState<Record<string, number>>({});
-  // Default to analytics for admins; we re-sync once auth resolves so a reload
-  // never lands on the Ticket Reports tab when an admin refreshes the page.
+  // Admin-configurable console header image (falls back to bundled seed art).
+  const [heroBg, setHeroBg] = useState<string | null>(null);
+  const [heroFit, setHeroFit] = useState<string>("cover");
+  const [heroPos, setHeroPos] = useState<string>("center right");
+  useEffect(() => {
+    supabase.from("app_settings").select("admin_hero_url,admin_hero_fit,admin_hero_position").eq("id", 1).maybeSingle()
+      .then(({ data }) => {
+        setHeroBg((data as any)?.admin_hero_url ?? null);
+        setHeroFit((data as any)?.admin_hero_fit ?? "cover");
+        setHeroPos((data as any)?.admin_hero_position ?? "center right");
+      });
+  }, []);
+  // Toggle the frosted-glass blur on the whole console so admins can verify
+  // sensitive data alignment/layout against a clean, unblurred surface.
+  const [unblurred, setUnblurred] = useState(false);
+  // Default to analytics for admins; re-sync once auth resolves so a reload
+  // never lands on the Tickets tab when an admin refreshes the page.
   const [activeTab, setActiveTab] = useState<string>("analytics");
   useEffect(() => {
     if (loading) return;
@@ -60,7 +103,7 @@ function AdminPage() {
     if (!isAdmin) return;
     const loadAlerts = async () => {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [users, tokens, withdrawals, tickets, bets, promos, appeals] = await Promise.all([
+      const [users, tokens, withdrawals, tickets, bets, promos, appeals, chat] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("token_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("withdrawal_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -68,8 +111,9 @@ function AdminPage() {
         supabase.from("bets").select("id", { count: "exact", head: true }).gte("created_at", since),
         supabase.from("promo_code_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("chat_messages").select("id", { count: "exact", head: true }).gte("created_at", since),
       ]);
-      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0 });
+      setAlerts({ users: users.count ?? 0, tokens: tokens.count ?? 0, withdrawals: withdrawals.count ?? 0, tickets: tickets.count ?? 0, bettracker: bets.count ?? 0, promoreqs: promos.count ?? 0, appeals: appeals.count ?? 0, chat: chat.count ?? 0 });
     };
     loadAlerts();
     const ch = supabase.channel("admin-alert-indicators")
@@ -81,6 +125,7 @@ function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "bets" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "promo_code_requests" }, loadAlerts)
       .on("postgres_changes", { event: "*", schema: "public", table: "ban_appeals" }, loadAlerts)
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, loadAlerts)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [isAdmin]);
@@ -97,30 +142,35 @@ function AdminPage() {
 
   return (
     <Layout>
-      <main className="w-full min-h-[calc(100vh-3.5rem)]">
-        <div className={`mx-auto w-full ${activeTab === "analytics" ? "max-w-[1600px]" : "max-w-[1080px]"} px-3 sm:px-4 py-4 sm:py-6 space-y-4`}>
-          <div className="relative overflow-hidden rounded-2xl p-4 border border-primary/30 shadow-luxury bg-gradient-to-br from-card/90 via-card/70 to-primary/10 backdrop-blur-xl">
+      <main className={`admin-console-page${unblurred ? " admin-unblurred" : ""} w-full min-h-[calc(100vh-3.5rem)] overflow-x-hidden`}>
+        <div className="mx-auto w-full max-w-[1280px] px-3 sm:px-4 py-4 sm:py-6 space-y-4">
+
+          <div
+            className="admin-hero-frame relative overflow-hidden rounded-2xl p-5 sm:p-7"
+            style={{ backgroundImage: `linear-gradient(90deg, rgba(3,12,10,0.76) 0%, rgba(3,12,10,0.44) 42%, rgba(3,12,10,0.18) 100%), url(${heroBg || adminConsoleSeed})`, backgroundSize: `auto, ${heroFit === "contain" ? "contain" : heroFit === "fill" ? "100% 100%" : "cover"}`, backgroundPosition: `center, ${heroPos || "center right"}`, backgroundRepeat: "no-repeat" }}
+          >
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-gold" />
-            <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
             <div className="relative flex items-center gap-3 flex-wrap">
               <button
                 type="button"
                 onClick={() => setActiveTab("analytics")}
-                className="h-12 w-12 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40 shrink-0 hover:ring-primary/70 transition"
+                className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl bg-gradient-gold text-primary-foreground grid place-items-center shadow-gold overflow-hidden ring-2 ring-primary/40 shrink-0 hover:ring-primary/70 transition"
                 title="Open analytics"
               >
-                <img src={lslLogo} alt="LSL" className="h-10 w-10 object-contain" />
+                <img src={lslLogo} alt="LSL" className="h-14 w-14 sm:h-16 sm:w-16 object-contain" />
               </button>
               <div>
-                <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
-                <h1 className="text-2xl sm:text-3xl font-bold gradient-gold-text">Admin Console</h1>
+                <p className="text-[11px] sm:text-xs uppercase tracking-[0.3em] text-muted-foreground">Command center</p>
+                <h1 className="text-3xl sm:text-4xl font-bold gradient-gold-text">{isAdmin ? "Super Admin Console" : "Admin Panel"}</h1>
               </div>
               <Badge variant="outline" className={`ml-auto ${isAdmin ? "border-accent/50 text-accent" : "border-primary/50 text-primary"}`}>
                 {isAdmin ? "Super Admin" : "Admin"}
               </Badge>
               {isAdmin && (
                 <div className="flex items-center gap-1 w-full sm:w-auto sm:ml-2">
+                  <Button size="sm" variant="outline" className="text-[11px]" onClick={() => setUnblurred((v) => !v)} title="Toggle frosted-glass blur to verify alignment & layout">
+                    {unblurred ? "🔍 Unblurred" : "✨ Blurred"}
+                  </Button>
                   <Button size="sm" variant="outline" className="text-[11px]" onClick={() => { if (typeof window !== "undefined") window.location.reload(); }} title="Reload this admin page">⟳ Reload</Button>
                   <Button size="sm" variant="outline" className="text-[11px]" onClick={async () => {
                     try {
@@ -144,6 +194,7 @@ function AdminPage() {
             <TabsContent value="bannedusers" className="mt-4"><BannedUsersPanel /></TabsContent>
             <TabsContent value="virtual" className="mt-4"><VirtualAdminPanel /></TabsContent>
             <TabsContent value="matches" className="mt-4"><MatchesPanel /></TabsContent>
+            <TabsContent value="futures" className="mt-4"><FuturesAdminPanel /></TabsContent>
             <TabsContent value="events" className="mt-4"><EventsPanel /></TabsContent>
             <TabsContent value="tokens" className="mt-4"><TokensPanel /></TabsContent>
             <TabsContent value="tokenmovement" className="mt-4"><TokenMovementPanel /></TabsContent>
@@ -152,15 +203,23 @@ function AdminPage() {
             <TabsContent value="withdrawals" className="mt-4"><WithdrawalsPanel /></TabsContent>
             <TabsContent value="housewallet" className="mt-4"><HouseWalletPanel /></TabsContent>
             <TabsContent value="leaderboard" className="mt-4"><LeaderboardAdminPanel /></TabsContent>
+            <TabsContent value="lottery" className="mt-4"><LotteryAdminPanel /></TabsContent>
+            <TabsContent value="giftsspin" className="mt-4"><GiftsSpinAdminPanel /></TabsContent>
             <TabsContent value="promos" className="mt-4"><PromoPanel /></TabsContent>
             <TabsContent value="content" className="mt-4"><ContentPanel /></TabsContent>
             <TabsContent value="tickets" className="mt-4"><TicketsPanel /></TabsContent>
             <TabsContent value="tasks" className="mt-4"><TasksAchievementsPanel /></TabsContent>
+            <TabsContent value="surveys" className="mt-4"><SurveysAdminPanel /></TabsContent>
+            <TabsContent value="polls" className="mt-4"><PollsAdminPanel /></TabsContent>
+            <TabsContent value="shop" className="mt-4"><ShopAdminPanel /></TabsContent>
+            <TabsContent value="faq" className="mt-4"><FaqAdminPanel /></TabsContent>
+            <TabsContent value="news" className="mt-4"><NewsAdminPanel /></TabsContent>
             <TabsContent value="challenges" className="mt-4"><ChallengesAdminPanel /></TabsContent>
             <TabsContent value="seasons" className="mt-4"><SeasonsAdminPanel /></TabsContent>
             <TabsContent value="bettracker" className="mt-4"><BetTrackerPanel /></TabsContent>
             <TabsContent value="promoreqs" className="mt-4"><PromoRequestsPanel /></TabsContent>
             <TabsContent value="appeals" className="mt-4"><AppealsPanel /></TabsContent>
+            <TabsContent value="chat" className="mt-4"><ChatMonitorPanel /></TabsContent>
             <TabsContent value="notify" className="mt-4"><NotifyPanel /></TabsContent>
             <TabsContent value="audit" className="mt-4"><AuditPanel /></TabsContent>
             <TabsContent value="analytics" className="mt-4"><AnalyticsPanel /></TabsContent>
@@ -171,14 +230,23 @@ function AdminPage() {
             <TabsContent value="reports" className="mt-4"><ReportsPanel /></TabsContent>
             <TabsContent value="tokenrules" className="mt-4"><TokenRulesPanel /></TabsContent>
             <TabsContent value="broadcast" className="mt-4"><BroadcastPanel /></TabsContent>
+            <TabsContent value="pushblast" className="mt-4"><PushBroadcastPanel /></TabsContent>
+            <TabsContent value="banners" className="mt-4"><HomeBannersAdminPanel /></TabsContent>
+            <TabsContent value="arcade" className="mt-4"><ArcadeAdminPanel /></TabsContent>
+            <TabsContent value="casinohistory" className="mt-4"><CasinoHistoryPanel /></TabsContent>
             <TabsContent value="activity" className="mt-4"><ActivityPanel /></TabsContent>
             <TabsContent value="streakpush" className="mt-4"><StreakAndPushPanel /></TabsContent>
             <TabsContent value="referrals" className="mt-4"><ReferralsAdminPanel /></TabsContent>
             <TabsContent value="emblems" className="mt-4"><EmblemModerationPanel /></TabsContent>
             <TabsContent value="vip" className="mt-4"><VipAdminPanel /></TabsContent>
             <TabsContent value="spotlights" className="mt-4"><SpotlightsAdminPanel /></TabsContent>
+            <TabsContent value="clans" className="mt-4"><ClansAdminPanel /></TabsContent>
+            <TabsContent value="topbets" className="mt-4"><TopBetsPanel /></TabsContent>
+            <TabsContent value="tournaments" className="mt-4"><TournamentAdminPanel /></TabsContent>
+            <TabsContent value="attendance" className="mt-4"><AttendancePanel /></TabsContent>
           </Tabs>
         </div>
+        <ActionConfirmDialog />
       </main>
     </Layout>
   );
@@ -204,14 +272,7 @@ async function logAudit(action: string, target_type: string, target_id?: string,
     _metadata: enriched,
   });
   if (error) console.warn("audit log failed", error.message);
-}
-
-async function uploadStoragePath(bucket: string, prefix: string, file: File) {
-  const ext = file.name.split(".").pop() || "bin";
-  const path = `${prefix}-${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: false });
-  if (error) throw error;
-  return path;
+  else if (!SILENT_AUDIT_ACTIONS.has(action)) notifyAction("Action saved", humanizeAction(action));
 }
 
 function AdminTab({ icon: Icon, label, count = 0 }: { icon: any; label: string; count?: number }) {
@@ -241,7 +302,7 @@ function AdminSectionRail({ alerts, onOpen }: { alerts: Record<string, number>; 
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-gold" />
           <item.icon className="h-4 w-4 text-primary mb-2" />
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</div>
-          <div className="mt-1 text-2xl font-black gradient-gold-text">{item.count}</div>
+          <div className={`mt-1 text-2xl font-black ${item.count > 0 ? "text-emerald-400" : item.count < 0 ? "text-red-400" : "text-foreground"}`}>{item.count}</div>
           {item.count > 0 && <span className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />}
         </button>
       ))}
@@ -316,7 +377,7 @@ function Stats() {
       {items.map((x) => (
         <Card key={x.label} className="glass p-4">
           <x.icon className="h-5 w-5 text-primary mb-2" />
-          <div className="text-2xl font-bold gradient-gold-text">{x.value}</div>
+          <div className="text-2xl font-bold text-emerald-400">{x.value}</div>
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{x.label}</div>
         </Card>
       ))}
@@ -326,8 +387,13 @@ function Stats() {
 
 /* ============================ USERS ============================ */
 function UsersPanel() {
+  const confirm = useConfirm();
+  const runSeed = useServerFn(seedLegacyUsers);
+  const [seeding, setSeeding] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [rolesByUser, setRolesByUser] = useState<Record<string, string[]>>({});
+  const [kycByUser, setKycByUser] = useState<Record<string, boolean>>({});
+  const [betsByUser, setBetsByUser] = useState<Record<string, number>>({});
   const [q, setQ] = useState("");
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -335,17 +401,41 @@ function UsersPanel() {
   const [edit, setEdit] = useState<any | null>(null);
 
   async function load() {
-    const { data: u } = await supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(500);
-    setUsers(u ?? []);
-    const { data: r } = await supabase.from("user_roles").select("user_id,role").in("user_id", (u ?? []).map((x: any) => x.id));
+    const { data: rich } = await (supabase as any).rpc("admin_list_users_with_kyc");
+    const fallback = !rich || rich.length === 0;
+    let u: any[] = rich ?? [];
+    if (fallback) {
+      const r = await supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(500);
+      u = r.data ?? [];
+    }
+    setUsers(u);
+    const kyc: Record<string, boolean> = {};
+    const bets: Record<string, number> = {};
+    u.forEach((x: any) => { kyc[x.id] = !!x.email_confirmed; bets[x.id] = Number(x.total_bets ?? 0); });
+    setKycByUser(kyc); setBetsByUser(bets);
+    const { data: r } = await supabase.from("user_roles").select("user_id,role").in("user_id", u.map((x: any) => x.id));
     const m: Record<string, string[]> = {};
     (r ?? []).forEach((x: any) => { (m[x.user_id] ??= []).push(x.role); });
     setRolesByUser(m);
   }
   useEffect(() => { load(); }, []);
 
+  async function restoreLegacy() {
+    const ok = await confirm({ title: "Restore legacy member accounts?", description: "Recreates the imported members' login accounts (email-confirmed) and restores their profile data so they can use 'forgot password' to regain access. Existing accounts are left untouched.", confirmText: "Restore accounts" });
+    if (!ok) return;
+    setSeeding(true);
+    try {
+      const res: any = await runSeed();
+      toast.success(`Done — ${res.created} created, ${res.restored} profiles restored, ${res.skipped} already existed`);
+      if (res.errors?.length) toast.error(`Some rows had issues: ${res.errors[0]}`);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Seeding failed");
+    } finally { setSeeding(false); }
+  }
+
   const filtered = useMemo(() => {
-    let out = users.filter((u) => !q || u.full_name?.toLowerCase().includes(q.toLowerCase()) || u.email?.toLowerCase().includes(q.toLowerCase()) || u.gang_name?.toLowerCase().includes(q.toLowerCase()));
+    let out = users.filter((u) => !q || u.full_name?.toLowerCase().includes(q.toLowerCase()) || u.email?.toLowerCase().includes(q.toLowerCase()) || u.gang_name?.toLowerCase().includes(q.toLowerCase()) || u.discord_username?.toLowerCase().includes(q.toLowerCase()) || u.discord_full_name?.toLowerCase().includes(q.toLowerCase()));
     if (filterRole !== "all") out = out.filter((u) => (rolesByUser[u.id] ?? []).includes(filterRole));
     if (filterStatus === "banned") out = out.filter((u) => u.is_banned);
     if (filterStatus === "muted") out = out.filter((u) => u.is_muted);
@@ -383,6 +473,9 @@ function UsersPanel() {
               <div className="text-[10px] uppercase tracking-[0.32em] text-primary/80">Member Registry</div>
               <div className="text-xl font-display admin-user-foil">Users Panel</div>
             </div>
+            <Button size="sm" variant="outline" className="ml-2" disabled={seeding} onClick={restoreLegacy}>
+              {seeding ? "Restoring…" : "Restore Legacy Accounts"}
+            </Button>
           </div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
             {[
@@ -407,7 +500,7 @@ function UsersPanel() {
         <div className="relative md:col-span-1">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary/70" />
           <Input
-            placeholder="Search name, email, gang…"
+            placeholder="Search name, email, gang, Discord…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="pl-9 bg-background/40 border-primary/25 focus-visible:ring-primary/60"
@@ -448,7 +541,7 @@ function UsersPanel() {
         <span className="h-px flex-1 mx-3 bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-h-[80vh] overflow-y-auto pr-1">
         {filtered.map((u) => {
           const initials = (u.full_name ?? u.email ?? "U").split(/\s|@/).filter(Boolean).map((p: string) => p[0]).slice(0, 2).join("").toUpperCase();
           const userRoles = rolesByUser[u.id] ?? [];
@@ -490,6 +583,29 @@ function UsersPanel() {
                     {!u.is_banned && !u.is_muted && !u.is_restricted && <span className="badge-won text-[9px] px-1.5 py-0.5 rounded-full font-bold">ACTIVE</span>}
                   </div>
                   <div className="text-[11px] text-muted-foreground truncate">{u.email}</div>
+                  {u.special_id && (
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard?.writeText(u.special_id); toast.success(`Copied ID ${u.special_id}`); }}
+                      className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md border border-primary/40 text-primary bg-primary/10 hover:bg-primary/20 transition"
+                      title="Click to copy unique ID"
+                    >
+                      🆔 {u.special_id}
+                    </button>
+                  )}
+                  {u.phone && <div className="text-[10px] text-muted-foreground truncate">📞 {u.phone}</div>}
+                  {(u.discord_username || u.discord_full_name) && (
+                    <div className="text-[10px] text-[#5865F2] truncate" title="Discord">
+                      🎮 {u.discord_username || "—"}{u.discord_full_name && u.discord_username ? ` · ${u.discord_full_name}` : (u.discord_full_name ?? "")}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {kycByUser[u.id]
+                      ? <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold border border-emerald-400/60 text-emerald-300 bg-emerald-500/10">VERIFIED</span>
+                      : <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold border border-amber-400/60 text-amber-300 bg-amber-500/10">UNVERIFIED</span>}
+                    {kycByUser[u.id] && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold border border-sky-400/60 text-sky-300 bg-sky-500/10">KYC</span>}
+                    {(u.vip_tier ?? 0) > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold border border-primary/60 text-primary bg-primary/10">VIP</span>}
+                  </div>
                   <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
                     <Shield className="h-3 w-3 text-primary/70" />
                     <span className="truncate">{u.gang_name ?? "Independent"}{u.gang_type && ` · ${u.gang_type}`}</span>
@@ -523,8 +639,8 @@ function UsersPanel() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">XP</div>
-                  <div className="text-sm font-black text-primary/90">{(u.xp ?? 0).toLocaleString()}</div>
+                  <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Total Bets</div>
+                  <div className="text-sm font-black text-primary/90">{(betsByUser[u.id] ?? u.xp ?? 0).toLocaleString()}</div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">Joined</div>
@@ -611,6 +727,7 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
   async function saveProfile() {
     const { error } = await supabase.from("profiles").update({
       full_name: form.full_name, phone: form.phone, discord_username: form.discord_username,
+      discord_full_name: form.discord_full_name,
       country: form.country, gang_name: form.gang_name, gang_type: form.gang_type,
     }).eq("id", user.id);
     if (error) toast.error(error.message); else { toast.success("Saved"); logAudit("update_profile", "user", user.id); }
@@ -632,7 +749,7 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
   async function kickUser() {
     if (!isAdmin) return;
     if (!actionReason.trim()) { toast.error("Reason is required to kick a user."); return; }
-    const { error } = await (supabase as any).rpc("admin_kick_user", { user_id: user.id, _reason: actionReason.trim() });
+    const { error } = await (supabase as any).rpc("admin_kick_user", { _user_id: user.id, _reason: actionReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("User kicked — their active browser will sign out.");
     setActionReason("");
@@ -695,13 +812,12 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
 
           <Tabs value={tab} onValueChange={setTab} className="mt-4">
             <TabsList className="bg-transparent w-full justify-start gap-4 border-b border-border rounded-none p-0 h-auto">
-              {[
+              {([
                 ["profile", "Profile"],
-                ["tokens", "Tokens"],
-                ["roles", "Roles"],
+                ...(isAdmin ? [["tokens", "Tokens"], ["roles", "Roles"]] as const : [] as const),
                 ["actions", "Actions"],
                 ["history", "History"],
-              ].map(([v, l]) => (
+              ] as ReadonlyArray<readonly [string, string]>).map(([v, l]) => (
                 <TabsTrigger
                   key={v}
                   value={v}
@@ -728,6 +844,9 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
               </FieldLuxe>
               <FieldLuxe label="Discord">
                 <Input value={form.discord_username ?? ""} onChange={(e) => setForm({ ...form, discord_username: e.target.value })} />
+              </FieldLuxe>
+              <FieldLuxe label="Discord full name">
+                <Input value={form.discord_full_name ?? ""} onChange={(e) => setForm({ ...form, discord_full_name: e.target.value })} />
               </FieldLuxe>
               <FieldLuxe label="Country">
                 <Input value={form.country ?? ""} onChange={(e) => setForm({ ...form, country: e.target.value })} />
@@ -802,12 +921,36 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
               </div>
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-6 mt-5">
+            <TabsContent value="history" className="mt-5">
+              <Tabs defaultValue="bets" className="w-full">
+                <TabsList className="flex w-full flex-wrap justify-start gap-1 bg-muted/30 rounded-xl p-1 h-auto mb-1">
+                  <TabsTrigger value="bets" className="rounded-lg text-[11px] px-2.5 py-1.5 data-[state=active]:bg-gradient-gold data-[state=active]:text-background">Bet History ({bets.length})</TabsTrigger>
+                  <TabsTrigger value="tx" className="rounded-lg text-[11px] px-2.5 py-1.5 data-[state=active]:bg-gradient-gold data-[state=active]:text-background">Token Tx ({tx.length})</TabsTrigger>
+                  <TabsTrigger value="withdrawals" className="rounded-lg text-[11px] px-2.5 py-1.5 data-[state=active]:bg-gradient-gold data-[state=active]:text-background">Withdrawals ({withdrawals.length})</TabsTrigger>
+                  <TabsTrigger value="promos" className="rounded-lg text-[11px] px-2.5 py-1.5 data-[state=active]:bg-gradient-gold data-[state=active]:text-background">Promos ({redemptions.length})</TabsTrigger>
+                  <TabsTrigger value="audit" className="rounded-lg text-[11px] px-2.5 py-1.5 data-[state=active]:bg-gradient-gold data-[state=active]:text-background">Admin Actions ({audits.length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="bets" className="mt-4 space-y-6">
               {/* BETS */}
               <section>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Bet history ({bets.length})</div>
-                  <div className="text-[10px] text-muted-foreground">Stake → Potential</div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px]"
+                      onClick={async () => {
+                        const { data, error } = await supabase.rpc("resettle_won_bets");
+                        if (error) { toast.error(error.message); return; }
+                        toast.success(Number(data) > 0 ? `Corrected ${data} stuck ticket(s) to WON` : "No stuck tickets found");
+                      }}
+                    >
+                      Fix stuck won tickets
+                    </Button>
+                    <div className="text-[10px] text-muted-foreground">Stake → Potential</div>
+                  </div>
                 </div>
                 {bets.length === 0 && <div className="text-xs text-muted-foreground">No bets placed.</div>}
                 <div className="space-y-2">
@@ -850,7 +993,9 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                   })}
                 </div>
               </section>
+                </TabsContent>
 
+                <TabsContent value="tx" className="mt-4 space-y-6">
               {/* TOKEN TRANSACTIONS */}
               <section>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Token transactions ({tx.length})</div>
@@ -956,7 +1101,9 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                   })}
                 </div>
               </section>
+                </TabsContent>
 
+                <TabsContent value="withdrawals" className="mt-4 space-y-6">
               {/* WITHDRAWALS */}
               <section>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Withdrawal requests ({withdrawals.length})</div>
@@ -978,7 +1125,9 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                   ))}
                 </div>
               </section>
+                </TabsContent>
 
+                <TabsContent value="promos" className="mt-4 space-y-6">
               {/* PROMO REDEMPTIONS */}
               <section>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Promo redemptions ({redemptions.length})</div>
@@ -993,7 +1142,9 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                   ))}
                 </div>
               </section>
+                </TabsContent>
 
+                <TabsContent value="audit" className="mt-4 space-y-6">
               {/* ADMIN AUDIT TIMELINE */}
               <section>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Admin actions on this user ({audits.length})</div>
@@ -1025,6 +1176,8 @@ function UserEditDialog({ user, roles, onClose }: { user: any; roles: string[]; 
                   })}
                 </div>
               </section>
+                </TabsContent>
+              </Tabs>
             </TabsContent>
           </Tabs>
         </div>
@@ -1059,20 +1212,50 @@ function MatchesPanel() {
   const confirm = useConfirm();
   const [matches, setMatches] = useState<any[]>([]);
   const [wizard, setWizard] = useState(false);
+  const [shooterWizard, setShooterWizard] = useState(false);
 
   async function load() {
-    const { data } = await supabase.from("matches").select("*, home_team:teams!home_team_id(name,logo_url), away_team:teams!away_team_id(name,logo_url)").eq("is_archived", false).order("start_time", { ascending: false });
+    const { data } = await (supabase as any).from("matches").select("*, markets(id,is_open), home_team:teams!home_team_id(name,logo_url), away_team:teams!away_team_id(name,logo_url), home_player:players!home_player_id(name,avatar_url), away_player:players!away_player_id(name,avatar_url)").eq("is_archived", false).neq("match_kind", "future").order("start_time", { ascending: false });
     setMatches(data ?? []);
   }
   useEffect(() => { load(); }, []);
 
   async function setStatus(id: string, status: string) {
-    await supabase.from("matches").update({ status: status as any }).eq("id", id);
+    const { data, error } = await supabase
+      .from("matches")
+      .update({ status: status as any })
+      .eq("id", id)
+      .select("id");
+    if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Update blocked — you may not have admin permissions for this match.");
+      return;
+    }
     await logAudit(`match_${status}`, "match", id);
+    toast.success(status === "live" ? "Match is now live" : `Match ${status}`);
+    load();
+  }
+  async function toggleOdds(m: any) {
+    const anyOpen = (m.markets ?? []).some((mk: any) => mk.is_open);
+    const next = !anyOpen;
+    const { error } = await supabase.from("markets").update({ is_open: next }).eq("match_id", m.id);
+    if (error) { toast.error(error.message); return; }
+    await logAudit(next ? "match_odds_unlock" : "match_odds_lock", "match", m.id);
+    toast.success(next ? "Odds unlocked — betting open" : "Odds locked — betting closed");
+    load();
+  }
+  async function togglePresence(m: any, side: "home" | "away") {
+    const field = side === "home" ? "home_present" : "away_present";
+    const current = m[field] === true;
+    const { error } = await supabase.from("matches").update({ [field]: !current } as any).eq("id", m.id);
+    if (error) { toast.error(error.message); return; }
+    await logAudit("match_presence", "match", m.id, { side, present: !current });
     load();
   }
   async function settle(m: any) {
-    const ok = await confirm({ title: "End match and settle bets?", description: `Final score will be ${m.home_team?.name} ${m.home_score}–${m.away_score} ${m.away_team?.name}. Suspended/refunded tickets will not be credited.`, confirmText: "Settle match" });
+    const homeLabel = m.match_kind === "shooter" ? m.home_player?.name : m.home_team?.name;
+    const awayLabel = m.match_kind === "shooter" ? m.away_player?.name : m.away_team?.name;
+    const ok = await confirm({ title: "End match and settle bets?", description: `Final score will be ${homeLabel} ${m.home_score}–${m.away_score} ${awayLabel}. Suspended/refunded tickets will not be credited.`, confirmText: "Settle match" });
     if (!ok) return;
     const hs = Number(m.home_score ?? 0), as = Number(m.away_score ?? 0);
     let winnerId = null;
@@ -1081,7 +1264,11 @@ function MatchesPanel() {
     await supabase.from("matches").update({ home_score: hs, away_score: as, status: "ended", winner_team_id: winnerId }).eq("id", m.id);
     await supabase.from("markets").update({ is_open: false }).eq("match_id", m.id);
     await settleBetsForMatch(m.id, winnerId, hs, as);
+    // Self-heal: an accumulator whose last-resolving leg completes here may have
+    // been wrongly stranded at "lost" earlier — credit any all-won ticket now.
+    await supabase.rpc("resettle_won_bets");
     await logAudit("match_settled", "match", m.id, { home_score: hs, away_score: as, winner_team_id: winnerId });
+    window.dispatchEvent(new CustomEvent("admin:futures-refresh", { detail: { matchId: m.id } }));
     toast.success("Match settled — bets paid out"); load();
   }
   async function deleteMatch(id: string) {
@@ -1109,6 +1296,7 @@ function MatchesPanel() {
   async function updateLiveScore(m: any, hs: number, as: number) {
     await supabase.from("matches").update({ home_score: hs, away_score: as }).eq("id", m.id);
     await logAudit("match_live_score", "match", m.id, { home_score: hs, away_score: as });
+    window.dispatchEvent(new CustomEvent("admin:futures-refresh", { detail: { matchId: m.id } }));
     load();
   }
 
@@ -1116,12 +1304,15 @@ function MatchesPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Button className="btn-luxury" onClick={() => setWizard(true)}><Plus className="h-4 w-4 mr-1" />New Match (Wizard)</Button>
+        <Button className="btn-luxury" onClick={() => setShooterWizard(true)}><Crosshair className="h-4 w-4 mr-1" />New Shooter Match</Button>
+        <Button className="btn-luxury" onClick={() => window.dispatchEvent(new CustomEvent("admin:set-tab", { detail: "futures" }))}><Target className="h-4 w-4 mr-1" />New Tournament Futures</Button>
         <Button variant="destructive" onClick={clearEnded}>
           <Trash2 className="h-4 w-4 mr-1" />Clear Ended Matches
         </Button>
         <Badge variant="outline" className="ml-auto text-[10px]">Bet history is preserved — only the panel list is cleared.</Badge>
       </div>
       {wizard && <MatchWizard onClose={() => { setWizard(false); load(); }} />}
+      {shooterWizard && <ShooterMatchWizard onClose={() => { setShooterWizard(false); load(); }} />}
 
       <div className="space-y-2">
         {matches.map((m: any) => (
@@ -1129,12 +1320,17 @@ function MatchesPanel() {
             <div className="min-w-0 flex items-center gap-2">
               {m.home_team?.logo_url && <img src={m.home_team.logo_url} alt="" className="h-8 w-8 rounded-full object-cover" />}
               <div>
-                <div className="font-bold truncate">{m.home_team?.name} vs {m.away_team?.name} {m.status === "ended" && <span className="text-xs text-muted-foreground">({m.home_score}–{m.away_score})</span>}</div>
-                <div className="text-xs text-muted-foreground">{m.name} · {m.start_time ? new Date(m.start_time).toLocaleString() : ""}</div>
+                <div className="font-bold truncate">{m.match_kind === "shooter" ? m.home_player?.name : m.home_team?.name} vs {m.match_kind === "shooter" ? m.away_player?.name : m.away_team?.name} {m.status === "ended" && <span className="text-xs text-muted-foreground">({m.home_score}–{m.away_score})</span>}</div>
+                <div className="text-xs text-muted-foreground">{m.name} · {m.start_time ? new Date(m.start_time).toLocaleString() : ""} {m.match_kind === "shooter" && <Badge variant="outline" className="ml-2 text-[9px] border-accent/40 text-accent">Shooter 1v1</Badge>}</div>
               </div>
             </div>
             <div className="flex gap-1 items-center flex-wrap">
               <Badge variant="outline" className="capitalize">{m.status}</Badge>
+              {(() => { const anyOpen = (m.markets ?? []).some((mk: any) => mk.is_open); return (
+                <Button size="sm" variant={anyOpen ? "outline" : "default"} onClick={() => toggleOdds(m)} title={anyOpen ? "Lock odds / close betting" : "Unlock odds / open betting"}>
+                  <Lock className="h-3 w-3 mr-1" />{anyOpen ? "Lock Odds" : "Odds Locked"}
+                </Button>
+              ); })()}
               {m.status === "live" && (
                 <LiveScoreEditor m={m} onSave={(hs, as) => updateLiveScore(m, hs, as)} />
               )}
@@ -1143,6 +1339,18 @@ function MatchesPanel() {
               <CorrectScoreManagerButton match={m} onSaved={load} />
               {m.status !== "cancelled" && m.status !== "ended" && <Button size="sm" variant="outline" onClick={() => setStatus(m.id, "cancelled")}>Cancel</Button>}
               <Button size="sm" variant="destructive" onClick={() => deleteMatch(m.id)} title="Delete match"><Trash2 className="h-3 w-3" /></Button>
+            </div>
+            <div className="w-full flex flex-wrap items-center gap-2 border-t border-border/40 pt-2 mt-1">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Leaderboard attendance:</span>
+              <Button size="sm" variant={m.home_present === true ? "default" : "destructive"} onClick={() => togglePresence(m, "home")}>
+                {m.home_present === true ? <Check className="h-3 w-3 mr-1" /> : <X className="h-3 w-3 mr-1" />}
+                {(m.match_kind === "shooter" ? m.home_player?.name : m.home_team?.name) ?? "Home"}: {m.home_present === true ? "Present" : "Absent"}
+              </Button>
+              <Button size="sm" variant={m.away_present === true ? "default" : "destructive"} onClick={() => togglePresence(m, "away")}>
+                {m.away_present === true ? <Check className="h-3 w-3 mr-1" /> : <X className="h-3 w-3 mr-1" />}
+                {(m.match_kind === "shooter" ? m.away_player?.name : m.away_team?.name) ?? "Away"}: {m.away_present === true ? "Present" : "Absent"}
+              </Button>
+              <span className="text-[9px] text-muted-foreground">Only sides explicitly marked <b>Present</b> earn leaderboard stats when the match ends.</span>
             </div>
           </Card>
         ))}
@@ -1156,11 +1364,15 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
   const { data: sels } = await supabase.from("bet_selections").select("*, markets!market_id(name), odds!odd_id(label)").eq("match_id", matchId);
   if (!sels || sels.length === 0) return;
   // Get team names for label comparison
-  const { data: match } = await supabase.from("matches").select("home_team_id, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name), home_score, away_score").eq("id", matchId).single() as any;
+  const { data: match } = await (supabase as any).from("matches").select("home_team_id,away_team_id,home_player_id,away_player_id,match_kind,home_player:players!home_player_id(name),away_player:players!away_player_id(name),home_team:teams!home_team_id(name),away_team:teams!away_team_id(name),home_score,away_score").eq("id", matchId).single() as any;
   const hs = homeScore ?? Number(match?.home_score ?? 0);
   const as_ = awayScore ?? Number(match?.away_score ?? 0);
   const scoreLabel = `${hs}-${as_}`;
-  const winnerLabel = winnerTeamId === null ? "Draw" : (winnerTeamId === match?.home_team_id ? match?.home_team?.name : match?.away_team?.name);
+  const winnerLabel = winnerTeamId === null
+    ? "Draw"
+    : match?.match_kind === "shooter"
+    ? (winnerTeamId === match?.home_team_id ? match?.home_player?.name : match?.away_player?.name)
+    : (winnerTeamId === match?.home_team_id ? match?.home_team?.name : match?.away_team?.name);
   for (const s of sels) {
     const marketName = (s as any).markets?.name ?? "";
     const oddLabel = (s as any).odds?.label ?? "";
@@ -1170,7 +1382,9 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
       const norm = (v: string) => v.replace(/[^0-9]/g, "-").replace(/-+/g, "-");
       result = norm(oddLabel) === norm(scoreLabel) ? "won" : "lost";
     } else {
-      result = oddLabel === winnerLabel ? "won" : "lost";
+      // Tolerant match: ignore case + surrounding whitespace so labels still settle.
+      const norm = (v: string) => (v ?? "").trim().toLowerCase();
+      result = winnerLabel != null && norm(oddLabel) === norm(winnerLabel) ? "won" : "lost";
     }
     await supabase.from("bet_selections").update({ result }).eq("id", s.id);
   }
@@ -1184,7 +1398,7 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
     if (!bet) continue;
     if (["suspended", "refunded", "void", "cashed_out"].includes(bet.status)) continue;
     if (allWon) {
-      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { bet_id: bid });
+      const { error: payErr } = await supabase.rpc("settle_pay_winning_bet", { _bet_id: bid });
       if (payErr) {
         toast.error(`Could not credit winnings for ${bet.tracking_id}: ${payErr.message}`);
       }
@@ -1195,13 +1409,474 @@ async function settleBetsForMatch(matchId: string, winnerTeamId: string | null, 
   }
 }
 
+async function settleFutureBets(matchId: string, winningOddIds: string[], winningLabel: string) {
+  const { data: sels } = await supabase.from("bet_selections").select("*").eq("match_id", matchId);
+  if (!sels || sels.length === 0) return;
+  for (const s of sels) {
+    await supabase.from("bet_selections").update({ result: winningOddIds.includes(s.odd_id) ? "won" : "lost" }).eq("id", s.id);
+  }
+  const betIds = Array.from(new Set(sels.map((s: any) => s.bet_id)));
+  for (const bid of betIds) {
+    const { data: betSels } = await supabase.from("bet_selections").select("result").eq("bet_id", bid);
+    if (!betSels || betSels.some((s: any) => !s.result)) continue;
+    const allWon = betSels.every((s: any) => s.result === "won");
+    const { data: bet } = await supabase.from("bets").select("*").eq("id", bid).single();
+    if (!bet || ["suspended", "refunded", "void", "cashed_out"].includes(bet.status)) continue;
+    if (allWon) {
+      const { error } = await supabase.rpc("settle_pay_winning_bet", { _bet_id: bid });
+      if (error) toast.error(`Could not credit ${bet.tracking_id}: ${error.message}`);
+    } else {
+      await supabase.from("bets").update({ status: "lost", settled_at: new Date().toISOString() }).eq("id", bid);
+      await supabase.from("notifications").insert({ user_id: bet.user_id, title: "Future bet lost", body: `Your ticket ${bet.tracking_id} did not match ${winningLabel}.`, link: `/ticket/${bid}` });
+    }
+  }
+}
+
+function ShooterMatchWizard({ onClose }: { onClose: () => void }) {
+  const [players, setPlayers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [form, setForm] = useState({ home_player_id: "", away_player_id: "", oddsA: 2, draw: 3.5, oddsB: 2, name: "", start_time: "", location: "", featured: true, marketing: true, homePresent: false, awayPresent: false, restrictRepeat: false });
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from("players").select("id,name,avatar_url,team_id,teams!team_id(name)").order("name"),
+      supabase.from("teams").select("id,name,logo_url").order("name"),
+    ]).then(([p, t]) => { setPlayers(p.data ?? []); setTeams(t.data ?? []); });
+  }, []);
+
+  async function create() {
+    if (!form.home_player_id || !form.away_player_id) { toast.error("Pick two shooters"); return; }
+    if (form.home_player_id === form.away_player_id) { toast.error("Choose two different shooters"); return; }
+    const home = players.find((p) => p.id === form.home_player_id);
+    const away = players.find((p) => p.id === form.away_player_id);
+    const homeTeamId = home?.team_id || teams[0]?.id;
+    const awayTeamId = away?.team_id || teams.find((t) => t.id !== homeTeamId)?.id || homeTeamId;
+    if (!homeTeamId || !awayTeamId) { toast.error("Create at least one team in Clan first, then seed shooters freely with or without team tag."); return; }
+    const { data: m, error } = await supabase.from("matches").insert({
+      name: form.name || `${home?.name} vs ${away?.name}`,
+      home_team_id: homeTeamId,
+      away_team_id: awayTeamId,
+      home_player_id: form.home_player_id,
+      away_player_id: form.away_player_id,
+      match_kind: "shooter",
+      marketing_enabled: form.marketing,
+      is_featured: form.featured,
+      location: form.location || "Shooter 1v1",
+      start_time: form.start_time ? new Date(form.start_time).toISOString() : new Date().toISOString(),
+      status: "scheduled",
+      home_present: form.homePresent, away_present: form.awayPresent, restrict_repeat_contender: form.restrictRepeat,
+    } as any).select().single();
+    if (error) { toast.error(error.message); return; }
+    const { data: market } = await supabase.from("markets").insert({ match_id: m.id, name: "Shooter Winner" }).select().single();
+    if (market) await supabase.from("odds").insert([
+      { market_id: market.id, label: home?.name ?? "Shooter A", value: form.oddsA },
+      { market_id: market.id, label: "Draw", value: form.draw },
+      { market_id: market.id, label: away?.name ?? "Shooter B", value: form.oddsB },
+    ]);
+    await logAudit("shooter_match_created", "match", m.id, { home_player: home?.name, away_player: away?.name, marketing: form.marketing });
+    toast.success("Shooter match posted with odds");
+    onClose();
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Crosshair className="h-5 w-5 text-primary" />Shooter Match — 1v1 Marketing Odds</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <ShooterSelect label="Shooter A" value={form.home_player_id} players={players} onChange={(v) => setForm({ ...form, home_player_id: v })} />
+            <ShooterSelect label="Shooter B" value={form.away_player_id} players={players} onChange={(v) => setForm({ ...form, away_player_id: v })} />
+            <div><label className="text-xs text-muted-foreground">Shooter A odds</label><Input type="number" step="0.01" min={1.01} value={form.oddsA} onChange={(e) => setForm({ ...form, oddsA: Number(e.target.value) })} /></div>
+            <div><label className="text-xs text-muted-foreground">Draw odds</label><Input type="number" step="0.01" min={1.01} value={form.draw} onChange={(e) => setForm({ ...form, draw: Number(e.target.value) })} /></div>
+            <div><label className="text-xs text-muted-foreground">Shooter B odds</label><Input type="number" step="0.01" min={1.01} value={form.oddsB} onChange={(e) => setForm({ ...form, oddsB: Number(e.target.value) })} /></div>
+            <div><label className="text-xs text-muted-foreground">Start time</label><Input type="datetime-local" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} /></div>
+          </div>
+          <Input placeholder="Marketing title (optional)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input placeholder="Location / stream / venue" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/60 p-3"><Switch checked={form.featured} onCheckedChange={(v) => setForm({ ...form, featured: v })} />Feature on homepage</label>
+            <label className="flex items-center gap-2 rounded-lg border border-accent/20 bg-card/60 p-3"><Switch checked={form.marketing} onCheckedChange={(v) => setForm({ ...form, marketing: v })} />Post for marketing</label>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/60 p-3"><Switch checked={form.homePresent} onCheckedChange={(v) => setForm({ ...form, homePresent: v })} />Shooter A present (counts on Leaderboard)</label>
+            <label className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/60 p-3"><Switch checked={form.awayPresent} onCheckedChange={(v) => setForm({ ...form, awayPresent: v })} />Shooter B present (counts on Leaderboard)</label>
+          </div>
+          <label className="flex items-center gap-2 rounded-lg border border-accent/20 bg-card/60 p-3 text-sm"><Switch checked={form.restrictRepeat} onCheckedChange={(v) => setForm({ ...form, restrictRepeat: v })} />Restrict repeat bets — one bet per contender on this match</label>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button className="btn-luxury" onClick={create}>Create Shooter Match</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ShooterSelect({ label, value, players, onChange }: { label: string; value: string; players: any[]; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="text-xs text-muted-foreground">{label}</label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger><SelectValue placeholder="Pick seeded shooter" /></SelectTrigger>
+        <SelectContent>
+          {players.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.teams?.name ? ` · ${p.teams.name}` : " · Free agent"}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function FuturesAdminPanel() {
+  const confirm = useConfirm();
+  const [settings, setSettings] = useState({ futures_section_title: "TOURNAMENT FUTURES", futures_min_stake: 1, futures_max_payout: 100000000, futures_max_selections: 1 });
+  const [futures, setFutures] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [linkableMatches, setLinkableMatches] = useState<any[]>([]);
+  const [draft, setDraft] = useState({ title: "Gang Champion of the Season", opens_at: new Date().toISOString().slice(0, 16), closes_at: "", options: "", min_stake: 1, max_payout: 100000000, max_selections: 1, next_title: "Round 1" });
+
+  async function load() {
+    const [{ data: s }, { data: f }, { data: tm }, { data: pl }] = await Promise.all([
+      supabase.from("app_settings").select("futures_section_title,futures_min_stake,futures_max_payout,futures_max_selections").eq("id", 1).maybeSingle(),
+      supabase.from("matches").select("*, markets(id,name,is_open,odds(id,label,value,is_winner,market_id,future_candidate_type,future_emblem_url,future_status,future_next_title,future_next_at,future_progress,future_match_id,future_match_side,future_live_score,future_live_outcome,future_live_opponent))").eq("match_kind", "future").eq("is_archived", false).order("start_time", { ascending: false }),
+      supabase.from("teams").select("id,name,logo_url,gang_type").order("name"),
+      supabase.from("players").select("id,name,avatar_url,team_id,teams!team_id(name)").order("name"),
+    ]);
+    if (s) setSettings({ futures_section_title: (s as any).futures_section_title ?? "TOURNAMENT FUTURES", futures_min_stake: Number((s as any).futures_min_stake ?? 1), futures_max_payout: Number((s as any).futures_max_payout ?? 100000000), futures_max_selections: Number((s as any).futures_max_selections ?? 1) });
+    setFutures(f ?? []);
+    setTeams(tm ?? []);
+    setPlayers(pl ?? []);
+    const { data: lm } = await supabase.from("matches")
+      .select("id,name,home_team_id,away_team_id,winner_team_id,home_score,away_score,status,home_team:teams!home_team_id(name),away_team:teams!away_team_id(name),home_player:players!home_player_id(name),away_player:players!away_player_id(name)")
+      .eq("is_archived", false).eq("is_virtual", false).neq("match_kind", "future")
+      .order("start_time", { ascending: false }).limit(300);
+    setLinkableMatches(lm ?? []);
+  }
+  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const refresh = () => load();
+    window.addEventListener("admin:futures-refresh", refresh);
+    const ch = supabase.channel("admin-futures-linked-score-refresh")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "odds" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "matches" }, refresh)
+      .subscribe();
+    return () => {
+      window.removeEventListener("admin:futures-refresh", refresh);
+      supabase.removeChannel(ch);
+    };
+  }, []);
+
+  async function ensureFutureTeams() {
+    const { data } = await supabase.from("teams").select("id,name").in("name", ["LSL Futures", "Season Field"]);
+    let a = data?.find((t) => t.name === "LSL Futures")?.id;
+    let b = data?.find((t) => t.name === "Season Field")?.id;
+    if (!a) { const { data: row } = await supabase.from("teams").insert({ name: "LSL Futures" }).select("id").single(); a = row?.id; }
+    if (!b) { const { data: row } = await supabase.from("teams").insert({ name: "Season Field" }).select("id").single(); b = row?.id; }
+    return { a, b };
+  }
+  async function saveSettings() {
+    const { error } = await supabase.from("app_settings").update(settings as any).eq("id", 1);
+    if (error) toast.error(error.message); else toast.success("Futures settings saved");
+  }
+  function addCandidate(label: string, odds = 5, type = "contender", emblem?: string | null) {
+    const row = [label, odds.toFixed(2), type, emblem ?? ""].join(" | ");
+    setDraft((d) => ({ ...d, options: `${d.options}${d.options.trim() ? "\n" : ""}${row}` }));
+  }
+  async function createFuture() {
+    const options = draft.options.split("\n").map((line) => {
+      const parts = line.includes("|") ? line.split("|").map((x) => x.trim()) : line.split(/[,@]/).map((x) => x.trim());
+      const [label, odd, type, emblem] = parts;
+      return { label, value: Number(odd), future_candidate_type: type || null, future_emblem_url: emblem || null };
+    }).filter((x) => x.label && Number.isFinite(x.value) && x.value >= 1.01);
+    if (!draft.title.trim() || !draft.closes_at || options.length < 2) { toast.error("Add title, close date, and at least two outcomes like: Spain, 5.50"); return; }
+    const ids = await ensureFutureTeams();
+    if (!ids.a || !ids.b) { toast.error("Could not prepare futures teams"); return; }
+    const { data: m, error } = await supabase.from("matches").insert({
+      name: draft.title.trim(), home_team_id: ids.a, away_team_id: ids.b, match_kind: "future", is_featured: true, marketing_enabled: true,
+      location: `Opens ${new Date(draft.opens_at).toLocaleString()} · ${draft.next_title || "Tournament"}`, start_time: new Date(draft.closes_at).toISOString(), lock_time: new Date(draft.opens_at).toISOString(), status: "scheduled",
+    } as any).select().single();
+    if (error) { toast.error(error.message); return; }
+    const { data: market } = await supabase.from("markets").insert({ match_id: m.id, name: draft.title.trim() }).select().single();
+    if (market) await supabase.from("odds").insert(options.map((o) => ({ market_id: market.id, label: o.label, value: o.value, future_candidate_type: o.future_candidate_type, future_emblem_url: o.future_emblem_url, future_next_title: draft.next_title || null, future_next_at: draft.opens_at ? new Date(draft.opens_at).toISOString() : null })) as any);
+    await supabase.from("app_settings").update({ futures_min_stake: draft.min_stake, futures_max_payout: draft.max_payout, futures_max_selections: draft.max_selections } as any).eq("id", 1);
+    await logAudit("future_market_created", "match", m.id, { title: draft.title, options: options.length });
+    toast.success("Futures market created");
+    setDraft({ title: "Gang Champion of the Season", opens_at: draft.opens_at, closes_at: "", options: "", min_stake: draft.min_stake, max_payout: draft.max_payout, max_selections: draft.max_selections, next_title: "Round 1" });
+    load();
+  }
+  async function updateOdd(oddId: string, value: number) {
+    await supabase.from("odds").update({ value } as any).eq("id", oddId);
+    load();
+  }
+  // Link a contender (odd) to a real normal match. We immediately pull the current
+  // score so the admin sees it right away; the DB trigger keeps it in sync afterwards.
+  async function linkContenderMatch(odd: any, matchId: string, side: "home" | "away") {
+    if (!matchId) {
+      await supabase.from("odds").update({ future_match_id: null, future_match_side: null, future_live_score: null, future_live_outcome: null, future_live_opponent: null } as any).eq("id", odd.id);
+      toast.success("Unlinked from match");
+      load();
+      return;
+    }
+    const lm = linkableMatches.find((m) => m.id === matchId);
+    const matchedSide = lm ? getMatchSideForContender(lm, odd.label) : null;
+    if (lm && !matchedSide) {
+      toast.error(`${odd.label} is not in that match. Pick the normal match where this contender actually played.`);
+      return;
+    }
+    const linkedSide = matchedSide ?? side;
+    const cs = lm ? (linkedSide === "away" ? lm.away_score : lm.home_score) : null;
+    const os = lm ? (linkedSide === "away" ? lm.home_score : lm.away_score) : null;
+    const opp = lm ? getLinkedOpponentName(lm, linkedSide) : null;
+    const ended = lm && ["ended", "completed", "settled"].includes(lm.status);
+    await supabase.from("odds").update({
+      future_match_id: matchId,
+      future_match_side: linkedSide,
+      future_live_score: lm ? `${cs ?? 0}-${os ?? 0}` : null,
+      future_live_opponent: opp ?? null,
+      future_live_outcome: ended ? ((cs ?? 0) >= (os ?? 0) ? "won" : "lost") : "pending",
+    } as any).eq("id", odd.id);
+    toast.success("Linked — scores auto-update from this match");
+    load();
+  }
+  async function updateFutureStatus(odd: any, status: string, opts: { score?: string; opponent?: string; at?: string } = {}) {
+    const progress = Array.isArray(odd.future_progress) ? [...odd.future_progress] : [];
+    const completed = progress.filter((p: any) => p && p.round != null).length;
+    const round = completed + 1;
+    const entry = {
+      round,
+      status,
+      score: opts.score?.trim() || null,
+      opponent: opts.opponent?.trim() || null,
+      title: `Round ${round}`,
+      at: opts.at ? new Date(opts.at).toISOString() : new Date().toISOString(),
+    };
+    progress.push(entry);
+    // A "lost" round no longer eliminates the contender — they advance to the next round
+    // and the loss is shown on the bet voucher progress. Only "disqualified" removes them.
+    const advanced = status === "qualified" || status === "lost";
+    const { error } = await supabase.from("odds").update({
+      future_status: status,
+      // After qualifying a round, the contender automatically moves to the next round.
+      future_next_title: advanced ? `Round ${round + 1}` : null,
+      future_next_at: opts.at ? new Date(opts.at).toISOString() : null,
+      future_progress: progress,
+      is_winner: status === "winner" ? true : odd.is_winner,
+    } as any).eq("id", odd.id);
+    if (error) { toast.error(error.message); return; }
+    // Only a disqualification settles open tickets as lost. A "lost" round keeps tickets open.
+    if (status === "disqualified") await loseFutureSelection(odd);
+    await logAudit("future_status_changed", "odd", odd.id, { label: odd.label, status, round, score: entry.score, opponent: entry.opponent });
+    toast.success(
+      status === "qualified" ? `${odd.label} qualified — advanced to Round ${round + 1}`
+        : status === "winner" ? `${odd.label} crowned WINNER`
+        : status === "lost" ? `${odd.label} lost Round ${round} — still in, advanced to Round ${round + 1}`
+        : `${odd.label} disqualified and removed from the event`,
+    );
+    load();
+  }
+  async function loseFutureSelection(odd: any) {
+    const { data: sels } = await supabase.from("bet_selections").select("id,bet_id").eq("odd_id", odd.id).is("result", null);
+    if (!sels?.length) return;
+    await supabase.from("bet_selections").update({ result: "lost" }).eq("odd_id", odd.id).is("result", null);
+    const betIds = Array.from(new Set(sels.map((s: any) => s.bet_id)));
+    for (const bid of betIds) await supabase.from("bets").update({ status: "lost", settled_at: new Date().toISOString() } as any).eq("id", bid).eq("status", "open");
+  }
+  async function finalizeFuture(match: any) {
+    const winners = (match.markets ?? []).flatMap((m: any) => m.odds ?? []).filter((o: any) => o.future_status === "winner" || o.is_winner);
+    if (winners.length === 0) { toast.error("Mark at least one winner first"); return; }
+    if (!await confirm({ title: `Settle ${match.name}?`, description: `This finalises the futures market with ${winners.length} winner(s): ${winners.map((o: any) => o.label).join(", ")}. Winning tickets are paid out and the market closes.`, confirmText: "Settle futures" })) return;
+    await supabase.from("odds").update({ is_winner: false, future_status: "settled" } as any).in("market_id", (match.markets ?? []).map((m: any) => m.id));
+    await supabase.from("odds").update({ is_winner: true, future_status: "winner" } as any).in("id", winners.map((o: any) => o.id));
+    await supabase.from("markets").update({ is_open: false }).eq("match_id", match.id);
+    await supabase.from("matches").update({ status: "ended", settled_at: new Date().toISOString() } as any).eq("id", match.id);
+    await settleFutureBets(match.id, winners.map((o: any) => o.id), winners.map((o: any) => o.label).join(", "));
+    await supabase.rpc("resettle_won_bets");
+    await logAudit("future_market_settled", "match", match.id, { winners: winners.map((o: any) => o.label) });
+    toast.success("Future settled and tickets updated");
+    load();
+  }
+  async function archiveFuture(id: string) {
+    if (!await confirm({ title: "Archive this futures market?", description: "It will be hidden from the homepage and admin list. Existing tickets keep their records.", tone: "danger", confirmText: "Archive" })) return;
+    await supabase.from("matches").update({ is_archived: true }).eq("id", id);
+    load();
+  }
+
+  return (
+    <div className="grid lg:grid-cols-[420px_1fr] gap-4">
+      <Card className="glass-strong p-4 space-y-3">
+        <div className="font-bold flex items-center gap-2"><Target className="h-4 w-4 text-primary" />Futures Betting Control</div>
+        <Input value={settings.futures_section_title} onChange={(e) => setSettings({ ...settings, futures_section_title: e.target.value })} placeholder="Homepage section name" />
+        <div className="grid grid-cols-3 gap-2"><Input type="number" min={1} value={settings.futures_min_stake} onChange={(e) => setSettings({ ...settings, futures_min_stake: Number(e.target.value) })} /><Input type="number" min={1} value={settings.futures_max_payout} onChange={(e) => setSettings({ ...settings, futures_max_payout: Number(e.target.value) })} /><Input type="number" min={1} max={3} value={settings.futures_max_selections} onChange={(e) => setSettings({ ...settings, futures_max_selections: Math.min(3, Math.max(1, Number(e.target.value))) })} /></div>
+        <Button variant="outline" onClick={saveSettings}>Save Section Settings</Button>
+        <div className="h-px bg-border" />
+        <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Market title" />
+        <Input value={draft.next_title} onChange={(e) => setDraft({ ...draft, next_title: e.target.value })} placeholder="Current / next round title" />
+        <div><label className="text-xs text-muted-foreground">Opening date</label><Input type="datetime-local" value={draft.opens_at} onChange={(e) => setDraft({ ...draft, opens_at: e.target.value })} /></div>
+        <div><label className="text-xs text-muted-foreground">Closing date</label><Input type="datetime-local" value={draft.closes_at} onChange={(e) => setDraft({ ...draft, closes_at: e.target.value })} /></div>
+        <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+          {teams.map((t) => <Button key={t.id} size="sm" variant="outline" onClick={() => addCandidate(t.name, 5, t.gang_type === "F" ? "Faction / Clan" : "Gang", t.logo_url)}>{t.name}</Button>)}
+          {players.map((p) => <Button key={p.id} size="sm" variant="outline" onClick={() => addCandidate(p.name, 8, "Shooter", p.avatar_url)}>{p.name}</Button>)}
+        </div>
+        <Textarea rows={8} value={draft.options} onChange={(e) => setDraft({ ...draft, options: e.target.value })} placeholder={"One option per line:\nGang A | 5.50 | Gang | image-url\nTop Shooter | 8.00 | Shooter | image-url\nBest Clan | 10.00 | Faction / Clan | image-url"} />
+        <div className="grid grid-cols-3 gap-2"><Input type="number" min={1} value={draft.min_stake} onChange={(e) => setDraft({ ...draft, min_stake: Number(e.target.value) })} /><Input type="number" min={1} value={draft.max_payout} onChange={(e) => setDraft({ ...draft, max_payout: Number(e.target.value) })} /><Input type="number" min={1} max={3} value={draft.max_selections} onChange={(e) => setDraft({ ...draft, max_selections: Math.min(3, Math.max(1, Number(e.target.value))) })} /></div>
+        <Button className="btn-luxury w-full" onClick={createFuture}><Plus className="h-4 w-4 mr-1" />Create Futures Market</Button>
+      </Card>
+      <div className="space-y-3">
+        {futures.map((f) => (
+          <Card key={f.id} className="glass p-4 space-y-3">
+            <div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="font-bold text-lg truncate">{f.name}</div><div className="text-xs text-muted-foreground">Opens {f.lock_time ? new Date(f.lock_time).toLocaleString() : "now"} · Closes {new Date(f.start_time).toLocaleString()} · {f.status}</div></div><Button size="sm" className="btn-luxury" disabled={f.status === "ended"} onClick={() => finalizeFuture(f)}>Finalize</Button><Button size="sm" variant="destructive" onClick={() => archiveFuture(f.id)}><Trash2 className="h-3 w-3" /></Button></div>
+            {(f.markets ?? []).map((m: any) => <div key={m.id} className="grid grid-cols-2 md:grid-cols-3 gap-2">{(m.odds ?? []).map((o: any) => <FutureOddAdminCard key={o.id} odd={o} disabled={f.status === "ended"} onOdd={updateOdd} onStatus={updateFutureStatus} linkableMatches={linkableMatches} onLink={linkContenderMatch} />)}</div>)}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getMatchSideName(match: any, side: "home" | "away") {
+  const playerName = side === "home" ? match?.home_player?.name : match?.away_player?.name;
+  const teamName = side === "home" ? match?.home_team?.name : match?.away_team?.name;
+  return playerName?.trim?.() || teamName?.trim?.() || (side === "home" ? "Home" : "Away");
+}
+
+function getLinkedOpponentName(match: any, side: "home" | "away") {
+  return getMatchSideName(match, side === "away" ? "home" : "away");
+}
+
+function getMatchSideForContender(match: any, label: string): "home" | "away" | null {
+  const contender = label.trim().toLowerCase();
+  const homeNames = [match?.home_player?.name, match?.home_team?.name].map((name) => name?.trim?.().toLowerCase()).filter(Boolean);
+  const awayNames = [match?.away_player?.name, match?.away_team?.name].map((name) => name?.trim?.().toLowerCase()).filter(Boolean);
+  if (homeNames.includes(contender)) return "home";
+  if (awayNames.includes(contender)) return "away";
+  return null;
+}
+
+function getLinkableMatchLabel(match: any) {
+  return match?.name || `${getMatchSideName(match, "home")} v ${getMatchSideName(match, "away")}`;
+}
+
+function FutureOddAdminCard({ odd, disabled, onOdd, onStatus, linkableMatches, onLink }: { odd: any; disabled: boolean; onOdd: (id: string, value: number) => void; onStatus: (odd: any, status: string, opts?: { score?: string; opponent?: string; at?: string }) => void; linkableMatches: any[]; onLink: (odd: any, matchId: string, side: "home" | "away") => void }) {
+  const confirm = useConfirm();
+  const [at, setAt] = useState(odd.future_next_at ? new Date(odd.future_next_at).toISOString().slice(0, 16) : "");
+  const [score, setScore] = useState("");
+  const [opponent, setOpponent] = useState("");
+  const [side, setSide] = useState<"home" | "away">(odd.future_match_side === "away" ? "away" : "home");
+  const status = odd.future_status ?? "active";
+  const progress = Array.isArray(odd.future_progress) ? odd.future_progress : [];
+  const completed = progress.filter((p: any) => p && p.round != null).length;
+  const currentRound = completed + 1;
+  const linkedMatch = linkableMatches.find((m) => m.id === odd.future_match_id);
+  const linkedSide = odd.future_match_side === "away" ? "away" : "home";
+  const liveOpponent = linkedMatch ? getLinkedOpponentName(linkedMatch, linkedSide) : odd.future_live_opponent;
+  // "lost" is NOT terminal — the contender stays in the event and advances a round.
+  const terminal = ["disqualified", "settled", "winner"].includes(status);
+
+  useEffect(() => {
+    setSide(odd.future_match_side === "away" ? "away" : "home");
+  }, [odd.future_match_side]);
+
+  async function act(next: string) {
+    const title =
+      next === "qualified" ? `Qualify ${odd.label} (Round ${currentRound})?`
+      : next === "winner" ? `Crown ${odd.label} as WINNER?`
+      : `Mark ${odd.label} as ${next.toUpperCase()}?`;
+    const description =
+      next === "qualified"
+        ? `Records Round ${currentRound}${score.trim() ? ` · ${score.trim()}` : ""}${opponent.trim() ? ` (beat ${opponent.trim()})` : ""} and automatically advances them to Round ${currentRound + 1}.`
+      : next === "winner"
+        ? `Settles them as the tournament champion. Winning tickets update accordingly.`
+        : next === "lost"
+        ? `Records Round ${currentRound}${score.trim() ? ` · ${score.trim()}` : ""}${opponent.trim() ? ` (lost to ${opponent.trim()})` : ""}. They STAY in the event and advance to Round ${currentRound + 1}. The loss shows on bet vouchers but tickets stay open — they only lose if disqualified.`
+        : `Records Round ${currentRound}${score.trim() ? ` · ${score.trim()}` : ""}${opponent.trim() ? ` (lost to ${opponent.trim()})` : ""}. They are disqualified and removed from the event, and all open tickets on this pick are settled as lost.`;
+    const ok = await confirm({ title, description, confirmText: "Confirm" });
+    if (!ok) return;
+    onStatus(odd, next, { score, opponent, at });
+    setScore(""); setOpponent("");
+  }
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-card/60 p-2 space-y-2">
+      <div className="flex items-center gap-2">
+        <FutureTinyEmblem label={odd.label} url={odd.future_emblem_url} />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-bold truncate">{odd.label}</div>
+          <div className="text-[10px] text-muted-foreground truncate">{odd.future_candidate_type ?? "Contender"} · <span className="text-primary font-semibold">{terminal ? status : `Round ${currentRound}`}</span></div>
+        </div>
+      </div>
+      <Input className="h-8" type="number" step="0.01" value={Number(odd.value)} onChange={(e) => onOdd(odd.id, Number(e.target.value))} />
+      {!terminal && (
+        <div className="space-y-1 rounded-md border border-primary/15 bg-background/40 p-1.5">
+          <div className="text-[9px] uppercase tracking-wide text-muted-foreground">Link to a real match (auto-fills score)</div>
+          <div className="flex gap-1">
+            <Select value={odd.future_match_id ?? "none"} onValueChange={(v) => onLink(odd, v === "none" ? "" : v, side)}>
+              <SelectTrigger className="h-7 text-[10px]"><SelectValue placeholder="Pick match" /></SelectTrigger>
+              <SelectContent className="max-h-60">
+                <SelectItem value="none">— No linked match —</SelectItem>
+                {linkableMatches.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="text-[10px]">
+                    {getLinkableMatchLabel(m)}{m.home_score != null ? ` (${m.home_score}-${m.away_score})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={side} onValueChange={(v) => { setSide(v as "home" | "away"); if (odd.future_match_id) onLink(odd, odd.future_match_id, v as "home" | "away"); }}>
+              <SelectTrigger className="h-7 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="home" className="text-[10px]">Home</SelectItem>
+                <SelectItem value="away" className="text-[10px]">Away</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {odd.future_match_id && (
+            <div className="flex items-center justify-between gap-1 pt-0.5">
+              <span className="text-[10px] text-muted-foreground truncate">
+                Live: <span className="text-primary font-bold">{odd.future_live_score ?? "0-0"}</span>
+                {liveOpponent ? ` vs ${liveOpponent}` : ""}
+                {odd.future_live_outcome && odd.future_live_outcome !== "pending" ? ` · ${odd.future_live_outcome.toUpperCase()}` : ""}
+              </span>
+              {!disabled && (
+                <button type="button" className="text-[9px] underline text-primary shrink-0" onClick={() => { if (odd.future_live_score) setScore(odd.future_live_score); if (liveOpponent) setOpponent(liveOpponent); }}>Use score</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {!terminal && !disabled && (
+        <>
+          <Input className="h-8" value={score} onChange={(e) => setScore(e.target.value)} placeholder={`Round ${currentRound} score e.g. 21-15`} />
+          <Input className="h-8" value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Opponent (beat / lost to)" />
+          <Input className="h-8" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+        </>
+      )}
+      <div className="grid grid-cols-2 gap-1">
+        <Button size="sm" variant="outline" disabled={disabled || terminal} onClick={() => act("qualified")}>Qualified</Button>
+        <Button size="sm" variant="outline" disabled={disabled || terminal} onClick={() => act("winner")}>Winner</Button>
+        <Button size="sm" variant="outline" className="border-amber-500/40 text-amber-300" disabled={disabled || terminal} onClick={() => act("lost")}>Lost (stays in)</Button>
+        <Button size="sm" variant="destructive" disabled={disabled || terminal} onClick={() => act("disqualified")}>DQ</Button>
+      </div>
+      {progress.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1 border-t border-border/40">
+          {progress.map((p: any, i: number) => (
+            <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded-full border ${p.status === "winner" ? "border-emerald-400/50 text-emerald-300" : ["lost", "disqualified"].includes(p.status) ? "border-destructive/50 text-destructive" : "border-primary/40 text-primary"}`} title={`${p.opponent ? (["lost","disqualified"].includes(p.status) ? "lost to " : "beat ") + p.opponent : p.status}`}>
+              R{p.round}{p.score ? ` ${p.score}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FutureTinyEmblem({ label, url }: { label: string; url?: string | null }) {
+  const initials = label.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "LS";
+  return <span className="h-9 w-9 rounded-full bg-primary/10 border border-primary/30 grid place-items-center overflow-hidden text-[10px] font-bold text-primary shrink-0">{url ? <img src={url} alt="" className="h-full w-full object-cover" /> : initials}</span>;
+}
+
 function MatchWizard({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
   const [teams, setTeams] = useState<any[]>([]);
   const [cats, setCats] = useState<any[]>([]);
   const [teamA, setTeamA] = useState({ id: "", name: "", logoFile: null as File | null, mainPlayers: "", subPlayers: "" });
   const [teamB, setTeamB] = useState({ id: "", name: "", logoFile: null as File | null, mainPlayers: "", subPlayers: "" });
-  const [details, setDetails] = useState({ homeIs: "A" as "A" | "B", oddsA: 2.0, draw: 3.5, oddsB: 2.0, name: "", start_time: "", location: "", category_id: "", featured: false });
+  const [details, setDetails] = useState({ homeIs: "A" as "A" | "B", oddsA: 2.0, draw: 3.5, oddsB: 2.0, name: "", start_time: "", location: "", category_id: "", featured: false, homePresent: false, awayPresent: false, restrictRepeat: false, featuredBgFile: null as File | null, featuredBgUrl: "" });
   const [csEnabled, setCsEnabled] = useState(true);
   const [csRows, setCsRows] = useState<Array<{ label: string; value: number }>>(
     POPULAR_SCORES.map(([h, a]) => {
@@ -1256,8 +1931,19 @@ function MatchWizard({ onClose }: { onClose: () => void }) {
       start_time: details.start_time ? new Date(details.start_time).toISOString() : new Date().toISOString(),
       location: details.location, status: "scheduled",
       category_id: details.category_id || null, is_featured: details.featured,
-    }).select().single();
+      home_present: details.homePresent, away_present: details.awayPresent, restrict_repeat_contender: details.restrictRepeat,
+      featured_bg_url: details.featuredBgUrl || null,
+    } as any).select().single();
     if (error) { toast.error(error.message); return; }
+    if (details.featured && details.featuredBgFile && m?.id) {
+      const ext = details.featuredBgFile.name.split(".").pop() || "jpg";
+      const path = `match-${m.id}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("ads").upload(path, details.featuredBgFile, { upsert: true });
+      if (!upErr) {
+        const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+        await (supabase as any).from("matches").update({ featured_bg_url: url }).eq("id", m.id);
+      }
+    }
     const { data: market } = await supabase.from("markets").insert({ match_id: m.id, name: "Match Winner" }).select().single();
     if (market) {
       await supabase.from("odds").insert([
@@ -1363,6 +2049,19 @@ function MatchWizard({ onClose }: { onClose: () => void }) {
             </div>
             <Input placeholder="Location / Venue" value={details.location} onChange={(e) => setDetails({ ...details, location: e.target.value })} />
             <label className="flex items-center gap-2 text-sm"><Switch checked={details.featured} onCheckedChange={(v) => setDetails({ ...details, featured: v })} /> Publish on homepage as Featured</label>
+            {details.featured && (
+              <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <label className="text-[11px] uppercase tracking-widest text-primary font-bold">Featured background image (optional)</label>
+                <p className="text-[11px] text-muted-foreground">Shown behind this specific match in the homepage Featured Matches carousel.</p>
+                <Input type="file" accept="image/*" onChange={(e) => setDetails({ ...details, featuredBgFile: e.target.files?.[0] ?? null })} />
+                <Input placeholder="…or paste a direct image URL" value={details.featuredBgUrl} onChange={(e) => setDetails({ ...details, featuredBgUrl: e.target.value })} />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/60 p-3 text-sm"><Switch checked={details.homePresent} onCheckedChange={(v) => setDetails({ ...details, homePresent: v })} /> Home team present (counts on Leaderboard)</label>
+              <label className="flex items-center gap-2 rounded-lg border border-primary/20 bg-card/60 p-3 text-sm"><Switch checked={details.awayPresent} onCheckedChange={(v) => setDetails({ ...details, awayPresent: v })} /> Away team present (counts on Leaderboard)</label>
+            </div>
+            <label className="flex items-center gap-2 rounded-lg border border-accent/20 bg-card/60 p-3 text-sm"><Switch checked={details.restrictRepeat} onCheckedChange={(v) => setDetails({ ...details, restrictRepeat: v })} /> Restrict repeat bets — one bet per contender on this match</label>
           </div>
         )}
 
@@ -1411,8 +2110,8 @@ function EventsPanel() {
   const [draft, setDraft] = useState({ title: "", description: "", ends_at: "", banner: null as File | null });
 
   async function load() {
-    const { data } = await (supabase as any).from("events_public").select("*").order("ends_at", { ascending: true });
-    setEvents(await withResolvedMedia((data ?? []) as any[], "event-banners", "banner_url", "banner_signed_url"));
+    const { data } = await supabase.from("events").select("*").order("ends_at", { ascending: true });
+    setEvents(data ?? []);
   }
   useEffect(() => { load(); }, []);
 
@@ -1420,8 +2119,10 @@ function EventsPanel() {
     if (!draft.title || !draft.ends_at) { toast.error("Title and end time required"); return; }
     let banner_url: string | null = null;
     if (draft.banner) {
-      try { banner_url = await uploadStoragePath("event-banners", "event", draft.banner); }
-      catch (e: any) { toast.error(e.message); return; }
+      const path = `event-${crypto.randomUUID()}.${draft.banner.name.split(".").pop()}`;
+      const { error } = await supabase.storage.from("ads").upload(path, draft.banner);
+      if (error) { toast.error(error.message); return; }
+      banner_url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
     }
     const { error } = await supabase.from("events").insert({ title: draft.title, description: draft.description, banner_url, ends_at: new Date(draft.ends_at).toISOString() });
     if (error) toast.error(error.message);
@@ -1457,7 +2158,7 @@ function EventsPanel() {
       <div className="space-y-2">
         {events.map((e) => (
           <Card key={e.id} className="glass p-3 flex items-center gap-3 flex-wrap">
-            {(e.banner_signed_url || e.banner_url) && <img src={e.banner_signed_url || e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
+            {e.banner_url && <img src={e.banner_url} alt="" className="h-12 w-20 rounded object-cover" />}
             <div className="flex-1 min-w-0">
               <div className="font-bold truncate">{e.title}</div>
               <div className="text-xs text-muted-foreground">Ends {new Date(e.ends_at).toLocaleString()}</div>
@@ -1473,6 +2174,7 @@ function EventsPanel() {
 
 /* ============================ TOKENS ============================ */
 function TokensPanel() {
+  const { isAdmin } = useAuth();
   const [reqs, setReqs] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, any>>({});
   const confirm = useConfirm();
@@ -1521,10 +2223,14 @@ function TokensPanel() {
           </div>
           <Badge variant="outline" className="capitalize">{r.status}</Badge>
           {r.status === "pending" && (
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={() => reject(r)}>Deny</Button>
-              <Button size="sm" className="btn-luxury" onClick={() => approve(r)}>Approve</Button>
-            </div>
+            isAdmin ? (
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => reject(r)}>Deny</Button>
+                <Button size="sm" className="btn-luxury" onClick={() => approve(r)}>Approve</Button>
+              </div>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">Super Admin only</Badge>
+            )
           )}
         </Card>
       ))}
@@ -1727,17 +2433,16 @@ function ContentPanel() {
 function AnnouncementsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", body: "", file: null as File | null });
-  async function load() {
-    const { data } = await (supabase as any).from("announcements_public").select("*").order("created_at", { ascending: false });
-    setList(await withResolvedMedia((data ?? []) as any[], "announcements", "image_url", "image_signed_url"));
-  }
+  async function load() { setList((await supabase.from("announcements").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title) return;
     let image_url: string | null = null;
     if (draft.file) {
-      try { image_url = await uploadStoragePath("announcements", "ann", draft.file); }
-      catch (e: any) { toast.error(e.message); return; }
+      const path = `ann-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
+      const { error } = await supabase.storage.from("announcements").upload(path, draft.file);
+      if (error) { toast.error(error.message); return; }
+      image_url = supabase.storage.from("announcements").getPublicUrl(path).data.publicUrl;
     }
     const { error } = await supabase.from("announcements").insert({ title: draft.title, body: draft.body, image_url });
     if (error) toast.error(error.message); else { setDraft({ title: "", body: "", file: null }); load(); logAudit("announcement_created", "announcement"); }
@@ -1755,7 +2460,7 @@ function AnnouncementsPanel() {
       </Card>
       {list.map((a) => (
         <Card key={a.id} className="glass p-3 flex items-center justify-between gap-3">
-          {(a.image_signed_url || a.image_url) && <img src={a.image_signed_url || a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
+          {a.image_url && <img src={a.image_url} alt="" className="h-10 w-10 rounded object-cover" />}
           <div className="min-w-0 flex-1"><div className="font-bold truncate">{a.title}</div><div className="text-xs text-muted-foreground truncate">{a.body}</div></div>
           <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
           <Button size="sm" variant="destructive" onClick={() => del(a.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -1768,16 +2473,14 @@ function AnnouncementsPanel() {
 function HighlightsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", file: null as File | null });
-  async function load() {
-    const { data } = await (supabase as any).from("highlights_public").select("*").order("created_at", { ascending: false });
-    setList(await withResolvedMedia((data ?? []) as any[], "highlights", "media_url", "media_signed_url"));
-  }
+  async function load() { setList((await supabase.from("highlights").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.title || !draft.file) { toast.error("Title and media required"); return; }
-    let url = "";
-    try { url = await uploadStoragePath("highlights", "hl", draft.file); }
-    catch (e: any) { toast.error(e.message); return; }
+    const path = `hl-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("highlights").upload(path, draft.file);
+    if (error) { toast.error(error.message); return; }
+    const url = supabase.storage.from("highlights").getPublicUrl(path).data.publicUrl;
     const media_type = draft.file.type.startsWith("video") ? "video" : "image";
     await supabase.from("highlights").insert({ title: draft.title, media_url: url, media_type });
     setDraft({ title: "", file: null }); load();
@@ -1794,8 +2497,12 @@ function HighlightsPanel() {
       <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
         {list.map((h) => (
           <Card key={h.id} className="glass p-2">
-            {h.media_type === "video" ? <video src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_signed_url || h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
+            {h.media_type === "video" ? <video src={h.media_url} className="w-full h-32 object-cover rounded" controls /> : <img src={h.media_url} className="w-full h-32 object-cover rounded" alt="" />}
             <div className="font-bold text-sm mt-1 truncate">{h.title}</div>
+            <div className="flex items-center gap-3 mt-1 text-xs">
+              <span className="flex items-center gap-1 text-emerald-300"><ThumbsUp className="h-3.5 w-3.5" />{h.likes ?? 0}</span>
+              <span className="flex items-center gap-1 text-destructive"><ThumbsDown className="h-3.5 w-3.5" />{h.dislikes ?? 0}</span>
+            </div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(h.id, !h.is_active)}>{h.is_active ? "Hide" : "Show"}</Button>
               <Button size="sm" variant="destructive" onClick={() => del(h.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -1810,16 +2517,14 @@ function HighlightsPanel() {
 function AdsPanel() {
   const [list, setList] = useState<any[]>([]);
   const [draft, setDraft] = useState({ title: "", link_url: "", file: null as File | null });
-  async function load() {
-    const { data } = await (supabase as any).from("advertisements_public").select("*").order("created_at", { ascending: false });
-    setList(await withResolvedMedia((data ?? []) as any[], "ads", "image_url", "image_signed_url"));
-  }
+  async function load() { setList((await supabase.from("advertisements").select("*").order("created_at", { ascending: false })).data ?? []); }
   useEffect(() => { load(); }, []);
   async function add() {
     if (!draft.file) { toast.error("Image required"); return; }
-    let url = "";
-    try { url = await uploadStoragePath("ads", "ad", draft.file); }
-    catch (e: any) { toast.error(e.message); return; }
+    const path = `ad-${crypto.randomUUID()}.${draft.file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("ads").upload(path, draft.file);
+    if (error) { toast.error(error.message); return; }
+    const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
     await supabase.from("advertisements").insert({ title: draft.title, image_url: url, link_url: draft.link_url || null });
     setDraft({ title: "", link_url: "", file: null }); load();
   }
@@ -1836,7 +2541,7 @@ function AdsPanel() {
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map((a) => (
           <Card key={a.id} className="glass p-2">
-            <img src={a.image_signed_url || a.image_url} className="w-full h-32 object-cover rounded" alt="" />
+            <img src={a.image_url} className="w-full h-32 object-cover rounded" alt="" />
             <div className="font-bold text-sm mt-1 truncate">{a.title}</div>
             <div className="flex gap-1 mt-1">
               <Button size="sm" variant="outline" onClick={() => toggle(a.id, !a.is_active)}>{a.is_active ? "Hide" : "Show"}</Button>
@@ -1882,7 +2587,7 @@ function TicketsPanel() {
   const [active, setActive] = useState<any | null>(null);
   const confirm = useConfirm();
   async function load() {
-    const { data } = await supabase.from("support_tickets").select("*, profiles!support_tickets_user_profile_fkey(full_name,email)").order("created_at", { ascending: false }).limit(200);
+    const { data } = await supabase.from("support_tickets").select("*, profiles!user_id(full_name,email)").order("created_at", { ascending: false }).limit(200);
     setTickets(data ?? []);
   }
   useEffect(() => {
@@ -1936,7 +2641,7 @@ function AdminTicketDialog({ ticket, onClose }: { ticket: any; onClose: () => vo
   const fileRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   async function load() {
-    const { data } = await supabase.from("ticket_messages").select("*, profiles!ticket_messages_user_profile_fkey(full_name,email)").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
+    const { data } = await supabase.from("ticket_messages").select("*, profiles!user_id(full_name,email)").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
     setMsgs(data ?? []);
   }
   useEffect(() => {
@@ -2130,7 +2835,7 @@ function AuditPanel() {
   const [q, setQ] = useState("");
   const [actionFilter, setActionFilter] = useState<string>("all");
 
-  const load = async () => {
+  useEffect(() => {
     supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500).then(async ({ data }) => {
       setLogs(data ?? []);
       const ids = new Set<string>();
@@ -2147,12 +2852,6 @@ function AuditPanel() {
         setProfiles(m);
       }
     });
-  };
-
-  useEffect(() => {
-    load();
-    const ch = supabase.channel("admin-audit-live").on("postgres_changes", { event: "*", schema: "public", table: "audit_logs" }, load).subscribe();
-    return () => { supabase.removeChannel(ch); };
   }, []);
 
   const filtered = useMemo(() => {
@@ -2213,25 +2912,22 @@ function AuditPanel() {
                 <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${dotCls} shadow-[0_0_10px_currentColor]`} />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-bold text-primary">{l.actor_name ?? meta.actor_name ?? actor?.full_name ?? "System"}</span>
-                    {(l.actor_role || meta.actor_role) && <Badge variant="outline" className="text-[9px] uppercase">{l.actor_role || meta.actor_role}</Badge>}
+                    <span className="font-bold text-primary">{actor?.full_name ?? "System"}</span>
                     <span className="text-muted-foreground">{action}</span>
                     <span className="text-muted-foreground">on</span>
                     <Badge variant="outline" className="capitalize">{l.target_type ?? "—"}</Badge>
-                    {(targetUser || l.target_name || meta.target_name) && (
+                    {targetUser && (
                       <>
                         <span className="text-muted-foreground">→</span>
-                        <span className="font-bold text-emerald-300">{targetUser?.full_name ?? l.target_name ?? meta.target_name}</span>
+                        <span className="font-bold text-emerald-300">{targetUser.full_name}</span>
                       </>
                     )}
                   </div>
                   <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {(l.actor_email || meta.actor_email || actor?.email) && <Detail icon={Users} label="By"><span className="font-mono">{l.actor_email || meta.actor_email || actor?.email}</span></Detail>}
+                    {actor?.email && <Detail icon={Users} label="By"><span className="font-mono">{actor.email}</span></Detail>}
                     {targetUser?.email && <Detail icon={Users} label="To"><span className="font-mono">{targetUser.email}</span></Detail>}
                     {l.target_id && l.target_type !== "user" && <Detail icon={Tag} label="Target ID"><span className="font-mono break-all">{l.target_id}</span></Detail>}
-                    {(l.reason || meta.reason) && <Detail icon={AlertTriangle} label="Reason"><span>{l.reason || meta.reason}</span></Detail>}
                     {meta.route && <Detail icon={MapPin} label="From route"><span className="font-mono">{meta.route}</span></Detail>}
-                    {l.source && <Detail icon={Sparkles} label="Source"><span className="font-mono">{l.source}</span></Detail>}
                     {meta.origin && <Detail icon={Globe} label="Origin"><span className="font-mono">{meta.origin}</span></Detail>}
                     {meta.user_agent && <Detail icon={Smartphone} label="Device"><span className="font-mono truncate inline-block max-w-[260px] align-bottom">{summariseUA(meta.user_agent)}</span></Detail>}
                     <Detail icon={Clock} label="When"><span title={ts.toISOString()}>{ts.toLocaleString()} <span className="text-muted-foreground">({timeAgo(ts)})</span></span></Detail>
@@ -2353,7 +3049,7 @@ function AnalyticsPanel() {
         supabase.from("ban_appeals").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("support_tickets").select("id", { count: "exact", head: true }).neq("status", "closed"),
         supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(3),
-        (supabase as any).from("events_public").select("id,title,banner_url,banner_signed_url,ends_at,is_active").eq("is_active", true).order("ends_at", { ascending: true }).limit(1).maybeSingle(),
+        supabase.from("events").select("*").eq("is_active", true).gt("ends_at", new Date().toISOString()).order("ends_at", { ascending: true }).limit(1).maybeSingle(),
       ]);
       const users = u.data ?? [];
       const bets = b.data ?? [];
@@ -2386,7 +3082,7 @@ function AnalyticsPanel() {
       });
       setLiveMatches(m.data ?? []);
       setBroadcasts(br.data ?? []);
-      setEvent(ev.data ? { ...ev.data, banner_signed_url: await resolveStorageUrl("event-banners", (ev.data as any).banner_url) } : null);
+      setEvent(ev.data ?? null);
 
       const days: Record<string, { day: string; bets: number; staked: number; users: number }> = {};
       const today = new Date(); today.setHours(0,0,0,0);
@@ -2407,8 +3103,8 @@ function AnalyticsPanel() {
 
       const { data: aud } = await supabase.from("audit_logs").select("action,target_type,created_at,metadata").order("created_at", { ascending: false }).limit(6);
       setActivity(aud ?? []);
-      const { data: hl } = await (supabase as any).from("highlights_public").select("id,title,media_url,media_signed_url,media_type,created_at").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
-      setHighlights(await withResolvedMedia((hl ?? []) as any[], "highlights", "media_url", "media_signed_url"));
+      const { data: hl } = await supabase.from("highlights").select("id,title,media_url,media_type,created_at,likes,dislikes").eq("is_active", true).order("created_at", { ascending: false }).limit(4);
+      setHighlights(hl ?? []);
     })();
   }, []);
 
@@ -2533,11 +3229,11 @@ function AnalyticsPanel() {
         </Card>
       </div>
 
-      {/* ROW 7 — Recent Activity | Live Gang Wars | Highlights Hub */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <PanelBlock title="RECENT ACTIVITY" accent="sky" onView={() => setActiveTabFromAnalytics(nav, "activity")}>
+      {/* ROW 7 — Recent Activity | Live Gang Wars + Event Countdown | Highlights Hub */}
+      <div className="grid grid-cols-[1.15fr_0.9fr_1.35fr] gap-3">
+        <PanelBlock title="RECENT ACTIVITY" accent="sky" count={activity.length} hideWhenEmpty onView={() => setActiveTabFromAnalytics(nav, "activity")}>
           {activity.length === 0 && <div className="text-[10px] text-muted-foreground">No activity yet</div>}
-          {activity.slice(0, 3).map((a, i) => (
+          {activity.slice(0, 5).map((a, i) => (
             <button key={i} onClick={() => setActiveTabFromAnalytics(nav, "audit")} className="w-full text-left flex items-start gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-sky-500/10 rounded transition">
               <Sparkles className="h-3 w-3 text-sky-400 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -2547,133 +3243,77 @@ function AnalyticsPanel() {
             </button>
           ))}
         </PanelBlock>
-        <PanelBlock title="LIVE GANG WARS" accent="rose" onView={() => nav({ to: "/matches" })}>
-          {liveMatches.length === 0 && <div className="text-[10px] text-muted-foreground">No live wars</div>}
-          {liveMatches.slice(0, 3).map((m: any) => {
-            const home = m.home_team; const away = m.away_team;
-            const initial = (n?: string) => (n ? n.charAt(0).toUpperCase() : "?");
-            return (
-              <button key={m.id} onClick={() => nav({ to: "/matches/$matchId", params: { matchId: m.id } })} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-rose-500/10 rounded px-1 transition">
-                {home?.logo_url ? <img src={home.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(home?.name)}</div>}
-                <div className="flex-1 min-w-0 text-center text-foreground font-semibold truncate">{home?.name ?? "Home"} <span className="text-muted-foreground">vs</span> {away?.name ?? "Away"}</div>
-                {away?.logo_url ? <img src={away.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(away?.name)}</div>}
+        <div className="space-y-3">
+          <PanelBlock title="LIVE GANG WARS" accent="rose" compact count={liveMatches.length} hideWhenEmpty onView={() => nav({ to: "/matches" })}>
+            {liveMatches.length === 0 && <div className="text-[10px] text-muted-foreground">No live wars</div>}
+            {liveMatches.slice(0, 2).map((m: any) => {
+              const home = m.home_team; const away = m.away_team;
+              const initial = (n?: string) => (n ? n.charAt(0).toUpperCase() : "?");
+              return (
+                <button key={m.id} onClick={() => nav({ to: "/matches/$matchId", params: { matchId: m.id } })} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-rose-500/10 rounded px-1 transition">
+                  {home?.logo_url ? <img src={home.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(home?.name)}</div>}
+                  <div className="flex-1 min-w-0 text-center text-foreground font-semibold truncate">{home?.name ?? "Home"} <span className="text-muted-foreground">vs</span> {away?.name ?? "Away"}</div>
+                  {away?.logo_url ? <img src={away.logo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-rose-500/40" /> : <div className="h-5 w-5 rounded-full bg-rose-500/20 grid place-items-center text-[8px] font-bold text-rose-300 border border-rose-500/40">{initial(away?.name)}</div>}
+                </button>
+              );
+            })}
+          </PanelBlock>
+          <PanelBlock title="EVENT COUNTDOWN" compact count={event ? 1 : 0} hideWhenEmpty onView={() => setActiveTabFromAnalytics(nav, "events")}>
+            {event ? (
+              <button onClick={() => setActiveTabFromAnalytics(nav, "events")} className="relative w-full min-h-24 text-left rounded-lg p-2 transition space-y-1 overflow-hidden border border-primary/20 bg-card/50">
+                {event.banner_url ? <img src={event.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" /> : <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-accent/20" />}
+                <div className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/45 to-background/70" />
+                <div className="relative text-[9px] sm:text-xs font-bold text-primary truncate drop-shadow">{event.title}</div>
+                <div className="relative text-[10px] sm:text-sm font-mono text-amber-300 drop-shadow"><Countdown target={event.ends_at} /></div>
+                {event.description && <div className="relative text-[9px] text-muted-foreground line-clamp-1">{event.description}</div>}
               </button>
-            );
-          })}
-        </PanelBlock>
-        <PanelBlock title="HIGHLIGHTS HUB" accent="violet" onView={() => setActiveTabFromAnalytics(nav, "content")}>
+            ) : <div className="text-[10px] text-muted-foreground">No active event</div>}
+          </PanelBlock>
+        </div>
+        <PanelBlock title="HIGHLIGHTS HUB" accent="violet" count={highlights.length} hideWhenEmpty onView={() => setActiveTabFromAnalytics(nav, "content")}>
           {highlights.length === 0 && <div className="text-[10px] text-muted-foreground">No highlights yet</div>}
-          {highlights.slice(0, 3).map((h) => (
+          {highlights.slice(0, 4).map((h) => (
             <button key={h.id} onClick={() => setActiveTabFromAnalytics(nav, "content")} className="w-full flex items-center gap-1.5 text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-violet-500/10 rounded px-1 transition">
               {h.media_type === "video" ? <Play className="h-3 w-3 text-violet-400 shrink-0" /> : <ImageIcon className="h-3 w-3 text-violet-400 shrink-0" />}
               <div className="min-w-0 flex-1 truncate text-left">{h.title}</div>
+              <span className="flex items-center gap-0.5 text-emerald-300 shrink-0"><ThumbsUp className="h-3 w-3" />{h.likes ?? 0}</span>
+              <span className="flex items-center gap-0.5 text-destructive shrink-0"><ThumbsDown className="h-3 w-3" />{h.dislikes ?? 0}</span>
             </button>
           ))}
         </PanelBlock>
       </div>
 
-      {/* ROW 8 — Event Countdown | Broadcast Center | Quick Actions */}
+      {/* ROW 8 — Broadcast Center | Quick Actions | Top Bets */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <PanelBlock title="EVENT COUNTDOWN" accent="amber" onView={() => setActiveTabFromAnalytics(nav, "events")}>
-          {event ? (
-            <button
-              onClick={() => setActiveTabFromAnalytics(nav, "events")}
-              className="relative w-full text-left rounded-lg overflow-hidden border border-amber-500/40 min-h-[96px] sm:min-h-[120px] group"
-            >
-              {(event.banner_signed_url || event.banner_url) ? (
-                <img
-                  src={event.banner_signed_url || event.banner_url}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/30 via-amber-700/20 to-background" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-background/85 via-background/55 to-background/25" />
-              <div className="relative p-2 sm:p-3 flex flex-col justify-end h-full min-h-[96px] sm:min-h-[120px]">
-                <div className="text-[9px] sm:text-xs font-bold text-foreground truncate drop-shadow">{event.title}</div>
-                <div className="text-base sm:text-2xl font-extrabold font-mono text-amber-300 drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)] tabular-nums"><Countdown target={event.ends_at} /></div>
-                <div className="text-[7px] sm:text-[9px] text-muted-foreground truncate">{new Date(event.ends_at).toLocaleString()}</div>
-              </div>
-            </button>
-          ) : (
-            <div className="text-[10px] text-muted-foreground">No active event</div>
-          )}
-        </PanelBlock>
-        <PanelBlock title="BROADCAST CENTER" accent="emerald" onView={() => setActiveTabFromAnalytics(nav, "broadcast")}>
+        <PanelBlock title="BROADCAST CENTER" compact count={broadcasts.length} hideWhenEmpty onView={() => setActiveTabFromAnalytics(nav, "broadcast")}>
           {broadcasts.length === 0 && <div className="text-[10px] text-muted-foreground">No broadcasts</div>}
-          {broadcasts.slice(0, 2).map((b) => (
-            <button key={b.id} onClick={() => setActiveTabFromAnalytics(nav, "broadcast")} className="w-full text-left text-[9px] sm:text-xs py-1 border-b border-border/40 last:border-0 hover:bg-emerald-500/10 rounded px-1 transition">
-              <div className="flex items-center gap-1"><Megaphone className="h-2.5 w-2.5 text-emerald-400 shrink-0" /><div className="truncate text-foreground font-semibold">{b.title || "Broadcast"}</div></div>
+          {broadcasts.map((b) => (
+            <button key={b.id} onClick={() => setActiveTabFromAnalytics(nav, "broadcast")} className="w-full text-left text-[9px] sm:text-xs py-1 border-b border-primary/10 last:border-0 hover:bg-primary/5 rounded px-1 transition">
+              <div className="flex items-center gap-1"><Megaphone className="h-2.5 w-2.5 text-primary shrink-0" /><div className="truncate text-foreground font-semibold">{b.title || "Broadcast"}</div></div>
               {b.body && <div className="text-[8px] sm:text-[10px] text-muted-foreground truncate pl-3.5">{b.body}</div>}
               <div className="text-[7px] sm:text-[9px] text-muted-foreground pl-3.5">{ts(b.created_at)}</div>
             </button>
           ))}
         </PanelBlock>
-        <PanelBlock title="QUICK ACTIONS" accent="primary">
-          <div className="max-h-[140px] sm:max-h-[160px] overflow-y-auto pr-1 -mr-1">
-            <div className="grid grid-cols-3 gap-1">
-              {[
-                { i: BarChart3, l: "Analytics", t: "analytics" },
-                { i: Users, l: "Users", t: "users" },
-                { i: Shield, l: "Banned", t: "bannedusers" },
-                { i: Sparkles, l: "Admin AI", t: "adminai" },
-                { i: AlertTriangle, l: "Appeals", t: "appeals" },
-                { i: History, l: "Audit", t: "audit" },
-                { i: ClipboardList, l: "Bet Tracker", t: "bettracker" },
-                { i: Send, l: "Broadcast", t: "broadcast" },
-                { i: Sparkles, l: "Challenges", t: "challenges" },
-                { i: Megaphone, l: "Content", t: "content" },
-                { i: Trophy, l: "Emblems", t: "emblems" },
-                { i: Calendar, l: "Events", t: "events" },
-                { i: Wallet, l: "House Wallet", t: "housewallet" },
-                { i: ListOrdered, l: "Leaderboard", t: "leaderboard" },
-                { i: Trophy, l: "Matches", t: "matches" },
-                { i: Send, l: "Notify", t: "notify" },
-                { i: BarChart3, l: "P&L", t: "pnl" },
-                { i: Tag, l: "Promo Codes", t: "promos" },
-                { i: Tag, l: "Promo Reqs", t: "promoreqs" },
-                { i: Users, l: "Referrals", t: "referrals" },
-                { i: BarChart3, l: "Reports", t: "reports" },
-                { i: AlertTriangle, l: "Risk", t: "risk" },
-                { i: Trophy, l: "Seasons", t: "seasons" },
-                { i: SettingsIcon, l: "Settings", t: "settings" },
-                { i: Sparkles, l: "Spotlights", t: "spotlights" },
-                { i: Sparkles, l: "Streak/Push", t: "streakpush" },
-                { i: ClipboardList, l: "Tasks", t: "tasks" },
-                { i: Ticket, l: "Tickets", t: "tickets" },
-                { i: Coins, l: "Tokens", t: "tokens" },
-                { i: Coins, l: "Token Rules", t: "tokenrules" },
-                { i: Coins, l: "Token Move", t: "tokenmovement" },
-                { i: Users, l: "Activity", t: "activity" },
-                { i: Dice5, l: "Virtual", t: "virtual" },
-                { i: Trophy, l: "VIP", t: "vip" },
-                { i: Wallet, l: "Withdrawals", t: "withdrawals" },
-                { i: Trophy, l: "Won Bets", t: "wonbets" },
-                { i: X, l: "Lost Bets", t: "lostbets" },
-              ].map((q) => (
-                <button key={q.l} onClick={() => setActiveTabFromAnalytics(nav, q.t)} className="flex flex-col items-center gap-0.5 p-1 rounded border border-primary/20 hover:border-primary/50 hover:bg-primary/10 active:scale-95 transition">
-                  <q.i className="h-3 w-3 text-primary" />
-                  <span className="text-[7px] sm:text-[9px] text-foreground text-center leading-tight">{q.l}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </PanelBlock>
+        <MiniLeaderboardPanel onOpen={() => setActiveTabFromAnalytics(nav, "leaderboard")} />
+        <TopBetsPanel limit={3} />
       </div>
 
       {/* ROW 9 — 5 module tiles */}
-      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+      <div className="grid grid-cols-6 gap-3">
         {[
-          { l: "VIRTUAL", s: "Manage virtual matches and rounds", t: "virtual", img: tileVirtual },
-          { l: "VIP PROGRAM", s: "Manage VIP tiers and rewards", t: "vip", img: tileVip },
-          { l: "CHALLENGES", s: "Create and manage gang challenges", t: "challenges", img: tileChallenges },
+          { l: "VIRTUAL", s: "Manage virtual matches and rounds", t: "virtual", img: tileVirtualAsset.url },
+          { l: "BATTLE", s: "Manage matches, fixtures and outcomes", t: "matches", img: tileBattleAsset.url },
+          { l: "CHALLENGES", s: "Create and manage gang challenges", t: "challenges", img: tileChallengesAsset.url },
           { l: "REFERRALS", s: "Manage referrals and commissions", t: "referrals", img: tileReferrals },
-          { l: "HOUSE WALLET", s: "Manage platform funds", t: "housewallet", img: tileHousewallet },
+          { l: "USERS", s: "Manage users, profiles and access", t: "users", img: tileUsersAsset.url },
+          { l: "CLANS", s: "Manage gangs, teams and players", t: "clans", img: tileClansAsset.url },
         ].map((m) => (
           <Card key={m.l} className="border-primary/20 bg-card/60 p-2 sm:p-3 flex flex-col">
-            <button type="button" onClick={() => setActiveTabFromAnalytics(nav, m.t)} className="aspect-square w-full mb-1 rounded overflow-hidden border border-primary/20 hover:border-primary/60 transition active:scale-95">
+            <button type="button" onClick={() => setActiveTabFromAnalytics(nav, m.t)} className="relative aspect-square w-full mb-1 rounded overflow-hidden border border-primary/20 hover:border-primary/60 transition active:scale-95">
               <img src={m.img} alt={m.l} loading="lazy" width={512} height={512} className="w-full h-full object-cover" />
+              <img src={lslLogo} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 m-auto h-1/2 w-1/2 object-contain opacity-15 mix-blend-screen drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)]" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
             </button>
             <div className="text-[8px] sm:text-[10px] font-bold text-primary leading-tight">{m.l}</div>
             <div className="text-[6px] sm:text-[8px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">{m.s}</div>
@@ -2682,7 +3322,6 @@ function AnalyticsPanel() {
         ))}
       </div>
 
-      {/* ROW 10 — System Status */}
       <Card className="border-primary/20 bg-card/60 p-3">
         <div className="text-[10px] sm:text-xs font-bold tracking-widest text-primary mb-2">SYSTEM STATUS <span className="text-muted-foreground font-normal">(COMING SOON)</span></div>
         <div className="grid grid-cols-5 gap-1 sm:gap-2">
@@ -2694,6 +3333,9 @@ function AnalyticsPanel() {
           ))}
         </div>
       </Card>
+
+      {/* Quick actions moved to the bottom — 4 buttons per column, scrolls horizontally */}
+      <QuickActionsBar onOpen={(t) => setActiveTabFromAnalytics(nav, t)} />
     </div>
   );
 }
@@ -2704,14 +3346,151 @@ function setActiveTabFromAnalytics(_nav: any, _tab: string) {
   window.dispatchEvent(ev);
 }
 
+const QUICK_ACTIONS: { i: any; l: string; t: string }[] = [
+  { i: BarChart3, l: "Analytics", t: "analytics" },
+  { i: Users, l: "Users", t: "users" },
+  { i: Shield, l: "Banned", t: "bannedusers" },
+  { i: Sparkles, l: "Admin AI", t: "adminai" },
+  { i: AlertTriangle, l: "Appeals", t: "appeals" },
+  { i: History, l: "Audit", t: "audit" },
+  { i: ClipboardList, l: "Bet Tracker", t: "bettracker" },
+  { i: Eye, l: "Attendance", t: "attendance" },
+  { i: Send, l: "Broadcast", t: "broadcast" },
+  { i: BellRing, l: "Push Blast", t: "pushblast" },
+  { i: GalleryHorizontalEnd, l: "Home Banners", t: "banners" },
+  { i: Gamepad2, l: "Arcade", t: "arcade" },
+  { i: History, l: "Casino History", t: "casinohistory" },
+  { i: Sparkles, l: "Challenges", t: "challenges" },
+  { i: MessageSquare, l: "Chat", t: "chat" },
+  { i: Megaphone, l: "Content", t: "content" },
+  { i: Megaphone, l: "News", t: "news" },
+  { i: Target, l: "Futures", t: "futures" },
+  { i: Trophy, l: "Emblems", t: "emblems" },
+  { i: Calendar, l: "Events", t: "events" },
+  { i: Wallet, l: "House Wallet", t: "housewallet" },
+  { i: Gift, l: "Gifts & Spin", t: "giftsspin" },
+  { i: Dice5, l: "Lottery", t: "lottery" },
+  { i: ClipboardList, l: "Surveys", t: "surveys" },
+  { i: Vote, l: "Polls", t: "polls" },
+  { i: ShoppingBag, l: "Shop", t: "shop" },
+  { i: LifeBuoy, l: "FAQ / Help", t: "faq" },
+  { i: ListOrdered, l: "Leaderboard", t: "leaderboard" },
+  { i: Trophy, l: "Matches", t: "matches" },
+  { i: Send, l: "Notify", t: "notify" },
+  { i: BarChart3, l: "P&L", t: "pnl" },
+  { i: Tag, l: "Promo Codes", t: "promos" },
+  { i: Tag, l: "Promo Reqs", t: "promoreqs" },
+  { i: Users, l: "Referrals", t: "referrals" },
+  { i: BarChart3, l: "Reports", t: "reports" },
+  { i: AlertTriangle, l: "Risk", t: "risk" },
+  { i: Trophy, l: "Seasons", t: "seasons" },
+  { i: Trophy, l: "Tournaments", t: "tournaments" },
+  { i: SettingsIcon, l: "Settings", t: "settings" },
+  { i: Sparkles, l: "Spotlights", t: "spotlights" },
+  { i: Sparkles, l: "Streak/Push", t: "streakpush" },
+  { i: ClipboardList, l: "Tasks", t: "tasks" },
+  { i: Ticket, l: "Tickets", t: "tickets" },
+  { i: Coins, l: "Tokens", t: "tokens" },
+  { i: Coins, l: "Token Rules", t: "tokenrules" },
+  { i: Coins, l: "Token Move", t: "tokenmovement" },
+  { i: Users, l: "Activity", t: "activity" },
+  { i: Dice5, l: "Virtual", t: "virtual" },
+  { i: Trophy, l: "VIP", t: "vip" },
+  { i: Wallet, l: "Withdrawals", t: "withdrawals" },
+  { i: Trophy, l: "Won Bets", t: "wonbets" },
+  { i: X, l: "Lost Bets", t: "lostbets" },
+];
+
+const QA_PALETTE = [
+  { ic: "text-emerald-400", bd: "border-emerald-500/30 hover:border-emerald-400/70 hover:bg-emerald-500/10" },
+  { ic: "text-sky-400",     bd: "border-sky-500/30 hover:border-sky-400/70 hover:bg-sky-500/10" },
+  { ic: "text-rose-400",    bd: "border-rose-500/30 hover:border-rose-400/70 hover:bg-rose-500/10" },
+  { ic: "text-amber-400",   bd: "border-amber-500/30 hover:border-amber-400/70 hover:bg-amber-500/10" },
+  { ic: "text-violet-400",  bd: "border-violet-500/30 hover:border-violet-400/70 hover:bg-violet-500/10" },
+  { ic: "text-fuchsia-400", bd: "border-fuchsia-500/30 hover:border-fuchsia-400/70 hover:bg-fuchsia-500/10" },
+  { ic: "text-cyan-400",    bd: "border-cyan-500/30 hover:border-cyan-400/70 hover:bg-cyan-500/10" },
+  { ic: "text-lime-400",    bd: "border-lime-500/30 hover:border-lime-400/70 hover:bg-lime-500/10" },
+  { ic: "text-orange-400",  bd: "border-orange-500/30 hover:border-orange-400/70 hover:bg-orange-500/10" },
+  { ic: "text-pink-400",    bd: "border-pink-500/30 hover:border-pink-400/70 hover:bg-pink-500/10" },
+  { ic: "text-teal-400",    bd: "border-teal-500/30 hover:border-teal-400/70 hover:bg-teal-500/10" },
+  { ic: "text-indigo-400",  bd: "border-indigo-500/30 hover:border-indigo-400/70 hover:bg-indigo-500/10" },
+];
+
+function QuickActionsBar({ onOpen }: { onOpen: (t: string) => void }) {
+  const actions = [...QUICK_ACTIONS].sort((a, b) => a.l.localeCompare(b.l));
+  return (
+    <Card className="border-primary/20 bg-card/60 p-3">
+      <div className="text-[10px] sm:text-xs font-bold tracking-widest text-primary mb-2">QUICK ACTIONS</div>
+      <div className="overflow-x-auto pb-2 -mb-2">
+        {/* 4 buttons stacked per column; columns flow horizontally and scroll left/right */}
+        <div className="grid grid-rows-4 grid-flow-col auto-cols-[68px] sm:auto-cols-[84px] gap-1.5 w-max">
+          {actions.map((q, idx) => {
+            const c = QA_PALETTE[idx % QA_PALETTE.length];
+            return (
+              <button key={q.l} onClick={() => onOpen(q.t)} className={`flex flex-col items-center justify-center gap-1 p-1.5 rounded border active:scale-95 transition ${c.bd}`}>
+                <q.i className={`h-3.5 w-3.5 ${c.ic}`} />
+                <span className="text-[7px] sm:text-[9px] text-foreground text-center leading-tight">{q.l}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MiniLeaderboardPanel({ onOpen }: { onOpen: () => void }) {
+  const [gangs, setGangs] = useState<LbRow[]>([]);
+  const [shooters, setShooters] = useState<LbRow[]>([]);
+  const [tab, setTab] = useState<"gangs" | "shooters">("gangs");
+
+  useEffect(() => {
+    loadStandings().then(({ gangs, shooters }) => { setGangs(gangs); setShooters(shooters); }).catch(() => {});
+  }, []);
+  const rows = (tab === "gangs" ? gangs : shooters).slice(0, 6);
+  return (
+    <Card className="bg-card/60 p-2 sm:p-3 flex flex-col min-h-0 max-h-[170px] border-amber-500/30 shadow-[0_0_30px_-12px_rgba(251,191,36,0.5)]">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-[8px] sm:text-[11px] font-bold tracking-widest text-amber-300 flex items-center gap-1"><Trophy className="h-3 w-3" />LEADERBOARD</div>
+        <button onClick={onOpen} className="text-[7px] sm:text-[9px] text-amber-300/80 hover:text-amber-200">Open</button>
+      </div>
+      <div className="flex gap-1 mb-1">
+        <button onClick={() => setTab("gangs")} className={`flex-1 text-[7px] sm:text-[9px] rounded px-1 py-0.5 border ${tab === "gangs" ? "border-amber-400/60 bg-amber-400/10 text-amber-200" : "border-border/40 text-muted-foreground"}`}>Gangs</button>
+        <button onClick={() => setTab("shooters")} className={`flex-1 text-[7px] sm:text-[9px] rounded px-1 py-0.5 border ${tab === "shooters" ? "border-amber-400/60 bg-amber-400/10 text-amber-200" : "border-border/40 text-muted-foreground"}`}>Shooters</button>
+      </div>
+      <button onClick={onOpen} className="flex-1 overflow-y-auto pr-0.5 text-left">
+        {rows.length === 0 && <div className="text-[9px] text-muted-foreground py-2">No data yet</div>}
+        {rows.map((r, i) => (
+          <div key={r.name} className="flex items-center gap-1.5 text-[8px] sm:text-[10px] py-0.5 border-b border-border/30 last:border-0">
+            <span className={`w-3.5 text-center font-black tabular-nums ${i < 3 ? "text-amber-300" : "text-muted-foreground"}`}>{i + 1}</span>
+            <span className="flex-1 min-w-0 truncate text-foreground font-semibold">{tab === "shooters" ? r.name : r.name}</span>
+            <span className="text-emerald-400 font-bold tabular-nums">{r.PTS}</span>
+          </div>
+        ))}
+      </button>
+    </Card>
+  );
+}
+
 function MetricSquare({ icon: Icon, value, title, sub, tone, compact, onClick }: { icon: any; value: any; title: string; sub?: string; tone?: string; compact?: boolean; onClick?: () => void }) {
-  const valueClass = tone === "gold-lg"
-    ? "text-[10px] sm:text-base font-black text-primary leading-tight"
-    : tone === "amber"
-    ? "text-base sm:text-xl font-black text-amber-400 leading-none"
+  // Parse the raw value to decide colour: positive => green, negative => red, otherwise white.
+  const numeric = (() => {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const cleaned = value.replace(/[, _]/g, "").replace(/[a-zA-Z%$₦]/g, "");
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  })();
+  const toneColor =
+    numeric == null ? "text-foreground" : numeric > 0 ? "text-emerald-400" : numeric < 0 ? "text-red-400" : "text-foreground";
+  const sizeCls = tone === "gold-lg"
+    ? "text-[10px] sm:text-base leading-tight"
     : compact
-    ? "text-xs sm:text-lg font-black text-primary leading-none"
-    : "text-base sm:text-2xl font-black text-primary leading-none";
+    ? "text-xs sm:text-lg leading-none"
+    : "text-base sm:text-2xl leading-none";
+  const valueClass = `${sizeCls} font-black ${toneColor}`;
   const content = (
     <>
       <Icon className="h-2.5 w-2.5 sm:h-4 sm:w-4 text-primary/70 mb-0.5" />
@@ -2735,25 +3514,30 @@ function MetricSquare({ icon: Icon, value, title, sub, tone, compact, onClick }:
   );
 }
 
-type PanelAccent = "primary" | "sky" | "rose" | "violet" | "amber" | "emerald";
-function PanelBlock({ title, onView, accent = "primary", children }: { title: string; onView?: () => void; accent?: PanelAccent; children: React.ReactNode }) {
-  const accents: Record<PanelAccent, { border: string; title: string; link: string; gradient: string }> = {
-    primary:  { border: "border-primary/25",   title: "text-primary",     link: "text-primary/70 hover:text-primary",       gradient: "from-primary/10" },
-    sky:      { border: "border-sky-500/25",   title: "text-sky-300",     link: "text-sky-300/70 hover:text-sky-200",       gradient: "from-sky-500/10" },
-    rose:     { border: "border-rose-500/25",  title: "text-rose-300",    link: "text-rose-300/70 hover:text-rose-200",     gradient: "from-rose-500/10" },
-    violet:   { border: "border-violet-500/25",title: "text-violet-300",  link: "text-violet-300/70 hover:text-violet-200", gradient: "from-violet-500/10" },
-    amber:    { border: "border-amber-500/25", title: "text-amber-300",   link: "text-amber-300/70 hover:text-amber-200",   gradient: "from-amber-500/10" },
-    emerald:  { border: "border-emerald-500/25",title:"text-emerald-300", link: "text-emerald-300/70 hover:text-emerald-200",gradient: "from-emerald-500/10" },
+function PanelBlock({ title, onView, children, accent, compact, count, hideWhenEmpty }: { title: string; onView?: () => void; children: React.ReactNode; accent?: "sky" | "rose" | "violet" | "amber" | "emerald"; compact?: boolean; count?: number; hideWhenEmpty?: boolean }) {
+  const accents: Record<string, { ring: string; title: string; link: string; glow: string }> = {
+    sky:     { ring: "border-sky-500/30",     title: "text-sky-300",     link: "text-sky-300/80 hover:text-sky-200",     glow: "shadow-[0_0_30px_-12px_rgba(56,189,248,0.5)]" },
+    rose:    { ring: "border-rose-500/30",    title: "text-rose-300",    link: "text-rose-300/80 hover:text-rose-200",    glow: "shadow-[0_0_30px_-12px_rgba(244,63,94,0.5)]" },
+    violet:  { ring: "border-violet-500/30",  title: "text-violet-300",  link: "text-violet-300/80 hover:text-violet-200",  glow: "shadow-[0_0_30px_-12px_rgba(167,139,250,0.5)]" },
+    amber:   { ring: "border-amber-500/30",   title: "text-amber-300",   link: "text-amber-300/80 hover:text-amber-200",   glow: "shadow-[0_0_30px_-12px_rgba(251,191,36,0.5)]" },
+    emerald: { ring: "border-emerald-500/30", title: "text-emerald-300", link: "text-emerald-300/80 hover:text-emerald-200", glow: "shadow-[0_0_30px_-12px_rgba(52,211,153,0.5)]" },
+    primary: { ring: "border-primary/20",     title: "text-primary",     link: "text-primary/70 hover:text-primary",     glow: "" },
   };
-  const a = accents[accent];
+  const a = accents[accent ?? "primary"];
+  // Sections that track live interactions are only shown when there is something to show.
+  if (hideWhenEmpty && (count ?? 0) <= 0) return null;
   return (
-    <Card className={`relative overflow-hidden ${a.border} bg-card/60 p-2 sm:p-3 flex flex-col h-[150px] sm:h-[170px]`}>
-      <div className={`absolute inset-0 bg-gradient-to-br ${a.gradient} via-transparent to-transparent pointer-events-none`} />
-      <div className="absolute -bottom-6 -right-6 opacity-[0.04] pointer-events-none">
-        <img src={lslLogo} alt="" className="h-24 w-24 object-contain" />
-      </div>
+    <Card className={`bg-card/60 p-2 sm:p-3 flex flex-col ${compact ? "min-h-0 max-h-[170px]" : "min-h-[140px]"} ${a.ring} ${a.glow}`}>
       <div className="relative flex items-center justify-between mb-1.5">
-        <div className={`text-[8px] sm:text-[11px] font-bold tracking-widest ${a.title}`}>{title}</div>
+        <div className={`flex items-center gap-1.5 text-[8px] sm:text-[11px] font-bold tracking-widest ${a.title}`}>
+          {title}
+          {(count ?? 0) > 0 && (
+            <span className="relative flex items-center gap-1 rounded-full bg-destructive/90 text-destructive-foreground px-1.5 py-px text-[7px] sm:text-[8px] font-black tracking-wider">
+              <span className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-destructive animate-ping" />
+              NEW {count}
+            </span>
+          )}
+        </div>
         {onView && (
           <button onClick={onView} className={`text-[7px] sm:text-[9px] ${a.link}`}>View all</button>
         )}
@@ -2785,6 +3569,13 @@ function SettingsPanel() {
     const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
     setS({ ...s, popup_ad_image: url });
   }
+  async function uploadInto(field: string, f: File) {
+    const path = `${field}-${Date.now()}-${f.name}`;
+    const { error } = await supabase.storage.from("ads").upload(path, f, { upsert: true });
+    if (error) { toast.error(error.message); return; }
+    const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+    setS({ ...s, [field]: url });
+  }
   return (
     <div className="grid lg:grid-cols-2 gap-4 max-w-5xl">
       <SettingsSection icon={Pause} title="Maintenance" subtitle="Block non-admin access and post a notice.">
@@ -2793,6 +3584,28 @@ function SettingsPanel() {
           <Switch checked={!!s.maintenance_mode} onCheckedChange={(v) => setS({ ...s, maintenance_mode: v })} />
         </div>
         <Textarea placeholder="Message shown to users" value={s.maintenance_message ?? ""} onChange={(e) => setS({ ...s, maintenance_message: e.target.value })} />
+        <FieldLuxe label="Banner image (optional)"><Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && uploadInto("maintenance_image", e.target.files[0])} /></FieldLuxe>
+        {s.maintenance_image && (
+          <div className="space-y-1">
+            <img src={s.maintenance_image} alt="" className="w-full max-h-40 object-contain rounded border border-border" />
+            <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => setS({ ...s, maintenance_image: null })}>Remove image</Button>
+          </div>
+        )}
+      </SettingsSection>
+
+      <SettingsSection icon={Lock} title="Website Closed" subtitle="Fully close the site to non-admin visitors and post a notice.">
+        <div className="flex items-center justify-between">
+          <div className="text-sm">Close website</div>
+          <Switch checked={!!s.closed_mode} onCheckedChange={(v) => setS({ ...s, closed_mode: v })} />
+        </div>
+        <Textarea placeholder="Message shown to users" value={s.closed_message ?? ""} onChange={(e) => setS({ ...s, closed_message: e.target.value })} />
+        <FieldLuxe label="Banner image (optional)"><Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && uploadInto("closed_image", e.target.files[0])} /></FieldLuxe>
+        {s.closed_image && (
+          <div className="space-y-1">
+            <img src={s.closed_image} alt="" className="w-full max-h-40 object-contain rounded border border-border" />
+            <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => setS({ ...s, closed_image: null })}>Remove image</Button>
+          </div>
+        )}
       </SettingsSection>
 
       <SettingsSection icon={Coins} title="Betting Limits" subtitle="Stake and payout guardrails.">
@@ -2805,14 +3618,26 @@ function SettingsPanel() {
         <p className="text-[10px] text-muted-foreground">Bets whose potential payout exceeds the cap are automatically clamped.</p>
       </SettingsSection>
 
+      <SettingsSection icon={Ticket} title="Re-bet" subtitle="Let members place another bet right after a successful placement." right={<Switch checked={s.allow_rebet !== false} onCheckedChange={(v) => setS({ ...s, allow_rebet: v })} />}>
+        <p className="text-[10px] text-muted-foreground">When on, a “Place another bet” action appears after a ticket is placed (real, virtual and seasonal/futures markets), so users can quickly pick another selection. When off, the slip closes to the placed-ticket screen.</p>
+      </SettingsSection>
+
       <SettingsSection icon={Sparkles} title="Brand" subtitle="Tagline shown across landing surfaces.">
         <FieldLuxe label="Hero tagline"><Input value={s.hero_tagline ?? ""} onChange={(e) => setS({ ...s, hero_tagline: e.target.value })} placeholder="Season 4 · Live" /></FieldLuxe>
+        <FieldLuxe label="Home headline (big colorful text — shown in CAPITALS)">
+          <Textarea rows={2} value={s.hero_title ?? ""} onChange={(e) => setS({ ...s, hero_title: e.target.value })} placeholder="Where gangs clash and legends are gold-plated." />
+        </FieldLuxe>
+        <FieldLuxe label="Home sub-text (small paragraph below the headline)">
+          <Textarea rows={3} value={s.hero_subtitle ?? ""} onChange={(e) => setS({ ...s, hero_subtitle: e.target.value })} placeholder="The Lomita Shooters League is a virtual-token competitive shooting circuit…" />
+        </FieldLuxe>
+        <p className="text-[10px] text-muted-foreground">Leave blank to keep the default styled headline. Custom headlines are automatically shown in gold capitals.</p>
       </SettingsSection>
 
       <SettingsSection icon={MessageSquare} title="Contact" subtitle="Public-facing contact channels.">
         <FieldLuxe label="Email"><Input value={s.contact_email ?? ""} onChange={(e) => setS({ ...s, contact_email: e.target.value })} /></FieldLuxe>
         <FieldLuxe label="Phone"><Input value={s.contact_phone ?? ""} onChange={(e) => setS({ ...s, contact_phone: e.target.value })} /></FieldLuxe>
         <FieldLuxe label="WhatsApp"><Input value={s.contact_whatsapp ?? ""} onChange={(e) => setS({ ...s, contact_whatsapp: e.target.value })} /></FieldLuxe>
+        <FieldLuxe label="Discord support server link"><Input placeholder="https://discord.gg/your-invite" value={s.discord_support_url ?? ""} onChange={(e) => setS({ ...s, discord_support_url: e.target.value })} /></FieldLuxe>
       </SettingsSection>
 
       <SettingsSection icon={Megaphone} title="About & Trust" subtitle="Public-facing copy.">
@@ -2829,6 +3654,7 @@ function SettingsPanel() {
               <SelectItem value="medium">Medium</SelectItem>
               <SelectItem value="large">Large</SelectItem>
               <SelectItem value="xl">Extra Large</SelectItem>
+              <SelectItem value="full">Full screen (covers home page)</SelectItem>
             </SelectContent>
           </Select>
         </FieldLuxe>
@@ -2836,6 +3662,81 @@ function SettingsPanel() {
         {s.popup_ad_image && <img src={s.popup_ad_image} alt="" className="w-full max-h-48 object-contain rounded border border-border" />}
         <FieldLuxe label="Body text/HTML"><Textarea rows={3} value={s.popup_ad_text ?? ""} onChange={(e) => setS({ ...s, popup_ad_text: e.target.value })} /></FieldLuxe>
         <FieldLuxe label="Link (optional)"><Input value={s.popup_ad_link ?? ""} onChange={(e) => setS({ ...s, popup_ad_link: e.target.value })} /></FieldLuxe>
+      </SettingsSection>
+
+      <SettingsSection icon={Sparkles} title="Platform Identity" subtitle="Rename the platform and set the home-page logo.">
+        <FieldLuxe label="Platform name (shown in header, footer & home page)">
+          <Input value={s.site_name ?? ""} onChange={(e) => setS({ ...s, site_name: e.target.value })} placeholder="Lomita Shooters League" />
+        </FieldLuxe>
+        <ImageSettingControl
+          label="Home page logo"
+          value={s.site_logo_url}
+          onChange={(url) => setS({ ...s, site_logo_url: url })}
+          showFitControls={false}
+          aspect="16 / 9"
+          previewBg="#0b1512"
+          help="Displayed at the very top of the home page hero. Upload directly or paste an image URL. Transparent PNG looks best."
+        />
+        <p className="text-[10px] text-amber-300/80">Remember to press “Save settings” below to apply.</p>
+      </SettingsSection>
+
+      <SettingsSection icon={ImageIcon} title="Backgrounds & Appearance" subtitle="Site-wide background and admin console header image — upload or paste a URL, then crop/fit and preview live.">
+        <ImageSettingControl
+          label="Site background (all pages)"
+          value={s.site_bg_url}
+          onChange={(url) => setS({ ...s, site_bg_url: url })}
+          fit={s.site_bg_fit ?? "cover"}
+          onFitChange={(v) => setS({ ...s, site_bg_fit: v })}
+          position={s.site_bg_position ?? "center"}
+          onPositionChange={(v) => setS({ ...s, site_bg_position: v })}
+          aspect="16 / 9"
+          help="Full-screen backdrop across every page. The preview shows exactly how it will be cropped. A large landscape image (1920×1080+) works best; it is dimmed for readability automatically."
+        />
+        <ImageSettingControl
+          label="Home page hero background"
+          value={s.hero_bg_url}
+          onChange={(url) => setS({ ...s, hero_bg_url: url })}
+          fit={s.hero_bg_fit ?? "cover"}
+          onFitChange={(v) => setS({ ...s, hero_bg_fit: v })}
+          position={s.hero_bg_position ?? "center"}
+          onPositionChange={(v) => setS({ ...s, hero_bg_position: v })}
+          aspect="21 / 9"
+          help="Background image behind the hero headline at the very top of the home page. Leave empty for a clean dark hero (no image)."
+        />
+        <ImageSettingControl
+          label="Featured Matches background"
+          value={s.featured_bg_url}
+          onChange={(url) => setS({ ...s, featured_bg_url: url })}
+          fit={s.featured_bg_fit ?? "cover"}
+          onFitChange={(v) => setS({ ...s, featured_bg_fit: v })}
+          position={s.featured_bg_position ?? "center"}
+          onPositionChange={(v) => setS({ ...s, featured_bg_position: v })}
+          aspect="16 / 9"
+          help="Background image shown behind the “Featured Matches” section on the home page. Only appears when there is NO active Seasonal Tournament. Leave empty for the plain dark section."
+        />
+        <ImageSettingControl
+          label="Admin console header image"
+          value={s.admin_hero_url}
+          onChange={(url) => setS({ ...s, admin_hero_url: url })}
+          fit={s.admin_hero_fit ?? "cover"}
+          onFitChange={(v) => setS({ ...s, admin_hero_fit: v })}
+          position={s.admin_hero_position ?? "center right"}
+          onPositionChange={(v) => setS({ ...s, admin_hero_position: v })}
+          aspect="21 / 9"
+          help="Shown behind the “Super Admin Console” banner at the top of the admin & moderator pages. A wide image works best."
+        />
+        <ImageSettingControl
+          label="Top navigation bar background"
+          value={s.nav_bg_url}
+          onChange={(url) => setS({ ...s, nav_bg_url: url })}
+          fit={s.nav_bg_fit ?? "cover"}
+          onFitChange={(v) => setS({ ...s, nav_bg_fit: v })}
+          position={s.nav_bg_position ?? "center"}
+          onPositionChange={(v) => setS({ ...s, nav_bg_position: v })}
+          aspect="32 / 9"
+          help="Background image for the sticky top navbar across the whole platform. A very wide, short banner works best. Leave empty to use the default dark bar."
+        />
+        <p className="text-[10px] text-amber-300/80">Remember to press “Save settings” below to apply.</p>
       </SettingsSection>
 
       <Card className="glass-strong p-4 lg:col-span-2 flex flex-wrap items-center gap-2 justify-between">
@@ -2896,7 +3797,7 @@ function WithdrawalsPanel() {
     });
     if (!ok || typeof ok !== "object") return;
     const note = ok.value;
-    const { error } = await supabase.rpc("review_withdrawal_request", { id: r.id, _approve: approve, _note: note || undefined });
+    const { error } = await supabase.rpc("review_withdrawal_request", { _id: r.id, _approve: approve, _note: note || undefined });
     if (error) toast.error(error.message); else {
       toast.success("Done");
       await logAudit(`withdrawal_${approve ? "approved" : "declined"}`, "withdrawal", r.id, {
@@ -2935,97 +3836,255 @@ function WithdrawalsPanel() {
 
 /* ============================ LEADERBOARD ADMIN ============================ */
 function LeaderboardAdminPanel() {
-  const [list, setList] = useState<any[]>([]);
-  const [draft, setDraft] = useState({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
-  const [editId, setEditId] = useState<string | null>(null);
+  const [gangs, setGangs] = useState<LbRow[]>([]);
+  const [shooters, setShooters] = useState<LbRow[]>([]);
+  const [tab, setTab] = useState<"gang" | "shooter">("gang");
+  const [edits, setEdits] = useState<Record<string, Partial<LbRow>>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [headerUrl, setHeaderUrl] = useState<string>("");
+  const [headerBusy, setHeaderBusy] = useState(false);
   const confirm = useConfirm();
-  async function load() { setList((await supabase.from("leaderboard_overrides").select("*").order("kind").order("manual_rank", { ascending: true, nullsFirst: false })).data ?? []); }
-  useEffect(() => { load(); }, []);
-  async function save() {
-    if (!draft.name) { toast.error("Name required"); return; }
-    const payload: any = { ...draft, manual_rank: draft.manual_rank ? Number(draft.manual_rank) : null };
-    if (editId) payload.id = editId;
+
+  async function load() {
+    const { gangs, shooters } = await loadStandings();
+    setGangs(gangs);
+    setShooters(shooters);
+    setEdits({});
+  }
+  useEffect(() => {
+    load();
+    supabase.from("app_settings").select("leaderboard_header_url").eq("id", 1).maybeSingle()
+      .then(({ data }) => setHeaderUrl((data as any)?.leaderboard_header_url ?? ""));
+  }, []);
+
+  async function saveHeaderUrl(url: string) {
+    const { error } = await supabase.from("app_settings").update({ leaderboard_header_url: url || null } as any).eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    setHeaderUrl(url);
+    await logAudit("leaderboard_header_update", "app_settings", undefined, { url });
+    toast.success("Leaderboard header saved");
+  }
+  async function uploadHeader(file: File) {
+    setHeaderBusy(true);
+    try {
+      const path = `leaderboard/header-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, "_")}`;
+      const { error } = await supabase.storage.from("ads").upload(path, file, { upsert: true });
+      if (error) { toast.error(error.message); return; }
+      const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+      await saveHeaderUrl(url);
+    } finally {
+      setHeaderBusy(false);
+    }
+  }
+
+  const rows = tab === "gang" ? gangs : shooters;
+  const rowKey = (r: LbRow) => `${tab}:${r.name}`;
+  function field(r: LbRow, k: keyof LbRow): any {
+    const e = edits[rowKey(r)];
+    return e && k in e ? (e as any)[k] : (r as any)[k];
+  }
+  function setField(r: LbRow, k: keyof LbRow, v: any) {
+    setEdits((prev) => ({ ...prev, [rowKey(r)]: { ...prev[rowKey(r)], [k]: v } }));
+  }
+
+  async function saveRow(r: LbRow) {
+    setSavingKey(rowKey(r));
+    const payload: any = {
+      kind: tab,
+      name: r.name,
+      top_player: tab === "gang" ? (field(r, "top_player") || null) : (field(r, "gang_faction") || null),
+      total_score: Number(field(r, "TS") ?? 0),
+      wins: Number(field(r, "W") ?? 0),
+      losses: Number(field(r, "L") ?? 0),
+      draws: Number(field(r, "D") ?? 0),
+      played: Number(field(r, "P") ?? 0),
+      points: Number(field(r, "PTS") ?? 0),
+      manual_rank: field(r, "manual_rank") != null && String(field(r, "manual_rank")) !== "" ? Number(field(r, "manual_rank")) : null,
+      is_hidden: false,
+    };
+    if (r.override_id) payload.id = r.override_id;
+    const { error } = await supabase.from("leaderboard_overrides").upsert(payload);
+    setSavingKey(null);
+    if (error) { toast.error(error.message); return; }
+    await logAudit("leaderboard_override_edit", "leaderboard_overrides", r.override_id ?? undefined, payload);
+    toast.success(`${r.name} updated`);
+    load();
+  }
+
+  async function resetRow(r: LbRow) {
+    if (!r.override_id) { toast.info("This row is auto-computed — nothing to reset."); return; }
+    if (!await confirm({ title: `Reset ${r.name} to auto-computed stats?`, description: "Removes the manual override so the row reflects match results again.", confirmText: "Reset" })) return;
+    await supabase.from("leaderboard_overrides").delete().eq("id", r.override_id);
+    await logAudit("leaderboard_override_delete", "leaderboard_overrides", r.override_id);
+    toast.success("Reset to auto stats");
+    load();
+  }
+
+  async function hideRow(r: LbRow) {
+    if (!await confirm({ title: `Remove ${r.name} from the leaderboard?`, description: "Hidden from the public board without touching match history. You can restore it later.", tone: "danger", confirmText: "Remove" })) return;
+    const payload: any = { kind: tab, name: r.name, is_hidden: true, wins: 0, losses: 0, draws: 0, played: 0, points: 0, total_score: 0 };
+    if (r.override_id) payload.id = r.override_id;
     const { error } = await supabase.from("leaderboard_overrides").upsert(payload);
     if (error) { toast.error(error.message); return; }
-    await logAudit(editId ? "leaderboard_override_edit" : "leaderboard_override_create", "leaderboard_overrides", editId ?? undefined, payload);
-    toast.success(editId ? "Entry updated" : "Override saved");
-    setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" });
-    setEditId(null);
+    await logAudit("leaderboard_hide", "leaderboard_overrides", r.override_id ?? undefined, { name: r.name, kind: tab });
+    toast.success(`${r.name} removed`);
     load();
   }
-  async function del(id: string) {
-    if (!await confirm({ title: "Delete leaderboard entry?", tone: "danger", confirmText: "Delete" })) return;
-    await supabase.from("leaderboard_overrides").delete().eq("id", id);
-    await logAudit("leaderboard_override_delete", "leaderboard_overrides", id);
-    load();
-  }
-  function editEntry(o: any) {
-    setEditId(o.id);
-    setDraft({
-      kind: o.kind ?? "gang", name: o.name ?? "", top_player: o.top_player ?? "",
-      wins: Number(o.wins ?? 0), losses: Number(o.losses ?? 0), draws: Number(o.draws ?? 0),
-      played: Number(o.played ?? 0), points: Number(o.points ?? 0),
-      manual_rank: o.manual_rank ? String(o.manual_rank) : "",
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-  async function clearScope(scope: "gang_faction" | "shooters" | "hall_of_fame", label: string) {
-    if (!await confirm({
-      title: `Wipe ${label}?`,
-      description: "This clears that leaderboard area so it can start fresh.",
-      tone: "danger", confirmText: `Wipe ${label}`,
-    })) return;
-    const { error } = await supabase.rpc("admin_clear_leaderboard_scope" as any, { _scope: scope });
+
+  // move a row up/down by assigning explicit positions (manual_rank) to it and its neighbour
+  async function move(r: LbRow, dir: -1 | 1) {
+    const idx = rows.findIndex((x) => x.name === r.name);
+    const other = rows[idx + dir];
+    if (!other) return;
+    const myRank = idx + 1;
+    const otherRank = idx + dir + 1;
+    const mk = (row: LbRow, rank: number) => {
+      const p: any = {
+        kind: tab, name: row.name,
+        top_player: tab === "gang" ? (row.top_player || null) : (row.gang_faction || null),
+        total_score: row.TS, wins: row.W, losses: row.L, draws: row.D, played: row.P, points: row.PTS,
+        manual_rank: rank, is_hidden: false,
+      };
+      if (row.override_id) p.id = row.override_id;
+      return p;
+    };
+    const { error } = await supabase.from("leaderboard_overrides").upsert([mk(r, otherRank), mk(other, myRank)]);
     if (error) { toast.error(error.message); return; }
+    await logAudit("leaderboard_reorder", "leaderboard_overrides", undefined, { moved: r.name, to: otherRank });
+    load();
+  }
+
+  async function clearAll() {
+    if (!await confirm({
+      title: `Wipe entire Leaderboard?`,
+      description: "Removes every manual override AND resets the auto-computed gang/shooter rows from past match results. Match history itself is preserved — new finished matches after this moment start a fresh leaderboard.",
+      tone: "danger", confirmText: "Clear leaderboard",
+    })) return;
+    const now = new Date().toISOString();
+    const { error: delErr } = await supabase.from("leaderboard_overrides").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (delErr) { toast.error(delErr.message); return; }
+    const { error: setErr } = await supabase.from("app_settings").update({ leaderboard_gangs_reset_at: now, leaderboard_shooters_reset_at: now } as any).eq("id", 1);
+    if (setErr) { toast.error(setErr.message); return; }
+    await logAudit("leaderboard_clear_all", "leaderboard_overrides", undefined, { reset_at: now });
+    toast.success("Leaderboard cleared");
+    load();
+  }
+  async function wipeKind(kind: "gang" | "shooter", label: string) {
+    if (!await confirm({ title: `Wipe ${label}?`, description: `Hides every ${label} row — both manual overrides and auto-computed rows. New activity after this moment starts a fresh list.`, tone: "danger", confirmText: `Wipe ${label}` })) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("leaderboard_overrides").delete().eq("kind", kind);
+    if (error) { toast.error(error.message); return; }
+    const patch: Record<string, string> = kind === "gang" ? { leaderboard_gangs_reset_at: now, hall_of_fame_reset_at: now } : { leaderboard_shooters_reset_at: now };
+    const { error: setErr } = await supabase.from("app_settings").update(patch as any).eq("id", 1);
+    if (setErr) { toast.error(setErr.message); return; }
+    await logAudit("leaderboard_wipe_kind", "leaderboard_overrides", undefined, { kind, reset_at: now });
     toast.success(`${label} wiped`);
     load();
   }
+  async function clearHotBets() {
+    if (!await confirm({ title: "Clear all Hot Bets?", description: "Hides every current Hot Bet from the homepage. New bets placed after this moment will start a fresh Hot Bets list.", tone: "danger", confirmText: "Clear hot bets" })) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("app_settings").update({ hot_bets_reset_at: now } as any).eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    await logAudit("hot_bets_clear", "app_settings", undefined, { reset_at: now });
+    toast.success("Hot bets cleared");
+  }
+  async function wipeHallOfFame() {
+    if (!await confirm({ title: "Wipe Hall of Fame?", description: "Hides every current Grand Prize Winner from the Hall of Fame. New winning tickets after this moment start a fresh list.", tone: "danger", confirmText: "Wipe Hall of Fame" })) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("app_settings").update({ hall_of_fame_reset_at: now } as any).eq("id", 1);
+    if (error) { toast.error(error.message); return; }
+    await logAudit("hall_of_fame_wipe", "app_settings", undefined, { reset_at: now });
+    toast.success("Hall of Fame wiped");
+  }
+
+  const numCls = "h-8 w-14 text-center px-1 tabular-nums";
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="text-xs text-muted-foreground">{list.length} manual override{list.length === 1 ? "" : "s"}</div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="destructive" size="sm" onClick={() => clearScope("gang_faction", "Gang & Faction")}><Trash2 className="h-3 w-3 mr-1" />Gang & Faction</Button>
-          <Button variant="destructive" size="sm" onClick={() => clearScope("shooters", "Shooters")}><Trash2 className="h-3 w-3 mr-1" />Shooters</Button>
-          <Button variant="destructive" size="sm" onClick={() => clearScope("hall_of_fame", "Hall of Fame")}><Trash2 className="h-3 w-3 mr-1" />Hall of Fame</Button>
-        </div>
-      </div>
-      <Card className="glass-strong p-4 space-y-2">
-        <div className="font-bold flex items-center gap-2">
-          {editId ? <><Pencil className="h-4 w-4 text-primary" />Editing entry</> : "Manual override (auto-stats are computed from match results)"}
-          {editId && <button onClick={() => { setEditId(null); setDraft({ kind: "gang", name: "", top_player: "", wins: 0, losses: 0, draws: 0, played: 0, points: 0, manual_rank: "" }); }} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Cancel edit</button>}
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <Select value={draft.kind} onValueChange={(v) => setDraft({ ...draft, kind: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="gang">Gang/Faction</SelectItem><SelectItem value="shooter">Shooter</SelectItem></SelectContent>
-          </Select>
-          <Input placeholder="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <Input placeholder="Top player (gang only)" value={draft.top_player} onChange={(e) => setDraft({ ...draft, top_player: e.target.value })} />
-          <Input placeholder="Manual rank #" value={draft.manual_rank} onChange={(e) => setDraft({ ...draft, manual_rank: e.target.value })} />
-          <Input type="number" placeholder="W" value={draft.wins} onChange={(e) => setDraft({ ...draft, wins: Number(e.target.value) })} />
-          <Input type="number" placeholder="L" value={draft.losses} onChange={(e) => setDraft({ ...draft, losses: Number(e.target.value) })} />
-          <Input type="number" placeholder="D" value={draft.draws} onChange={(e) => setDraft({ ...draft, draws: Number(e.target.value) })} />
-          <Input type="number" placeholder="Played" value={draft.played} onChange={(e) => setDraft({ ...draft, played: Number(e.target.value) })} />
-          <Input type="number" placeholder="Points" value={draft.points} onChange={(e) => setDraft({ ...draft, points: Number(e.target.value) })} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button className="btn-luxury" onClick={save}>
-            {editId ? <><Check className="h-4 w-4 mr-1" />Update entry</> : <><Plus className="h-4 w-4 mr-1" />Save override</>}
-          </Button>
+      <Card className="glass-ice p-3 space-y-2 border-amber-500/40">
+        <div className="text-xs font-bold tracking-widest text-amber-300">LEADERBOARD HEADER IMAGE</div>
+        <p className="text-[10px] text-muted-foreground">Shown at the top of the public Leaderboard page instead of the plain title. Upload a banner or paste an image URL.</p>
+        {headerUrl && <img src={headerUrl} alt="Leaderboard header" className="w-full max-h-28 object-contain rounded-lg border border-amber-500/30 bg-black/20" />}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex">
+            <input type="file" accept="image/*" className="hidden" disabled={headerBusy} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadHeader(f); }} />
+            <span className={`inline-flex items-center h-9 px-3 rounded-md border border-amber-500/40 text-amber-200 text-sm cursor-pointer hover:bg-amber-500/10 ${headerBusy ? "opacity-50 pointer-events-none" : ""}`}>{headerBusy ? "Uploading…" : "Upload image"}</span>
+          </label>
+          <Input value={headerUrl} onChange={(e) => setHeaderUrl(e.target.value)} placeholder="…or paste image URL" className="flex-1 min-w-[180px] h-9" />
+          <Button size="sm" variant="outline" onClick={() => saveHeaderUrl(headerUrl)}>Save URL</Button>
+          {headerUrl && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => saveHeaderUrl("")}>Clear</Button>}
         </div>
       </Card>
-      <div className="space-y-1">
-        {list.map((o) => (
-          <Card key={o.id} className="glass p-2 flex items-center gap-2 flex-wrap text-sm">
-            <Badge variant="outline" className="capitalize">{o.kind}</Badge>
-            <div className="font-bold flex-1 min-w-0 truncate">{o.name} {o.top_player && <span className="text-xs text-muted-foreground">· top: {o.top_player}</span>}</div>
-            <span className="text-xs text-muted-foreground">W {o.wins} · L {o.losses} · D {o.draws} · PTS {o.points}{o.manual_rank ? ` · #${o.manual_rank}` : ""}</span>
-            <Button size="sm" variant="outline" onClick={() => editEntry(o)}><Pencil className="h-3 w-3" /></Button>
-            <Button size="sm" variant="destructive" onClick={() => del(o.id)}><Trash2 className="h-3 w-3" /></Button>
-          </Card>
-        ))}
+
+      <Card className="glass-ice p-3 flex flex-wrap items-center gap-2 border-destructive/40">
+        <div className="text-xs font-bold tracking-widest text-destructive mr-1">DANGER ZONE</div>
+        <Button variant="destructive" size="sm" onClick={clearAll}><Trash2 className="h-3 w-3 mr-1" />Wipe Leaderboard</Button>
+        <Button variant="destructive" size="sm" onClick={() => wipeKind("shooter", "Shooters")}><Trash2 className="h-3 w-3 mr-1" />Wipe Shooters</Button>
+        <Button variant="destructive" size="sm" onClick={() => wipeKind("gang", "Gangs / Factions")}><Trash2 className="h-3 w-3 mr-1" />Wipe Gangs</Button>
+        <Button variant="destructive" size="sm" onClick={wipeHallOfFame}><Trash2 className="h-3 w-3 mr-1" />Wipe Hall of Fame</Button>
+        <Button variant="destructive" size="sm" onClick={clearHotBets}><Flame className="h-3 w-3 mr-1" />Clear Hot Bets</Button>
+        <span className="text-[10px] text-muted-foreground ml-auto">This editor mirrors the public Leaderboard exactly. Edits are saved as overrides.</span>
+      </Card>
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant={tab === "gang" ? "default" : "outline"} onClick={() => setTab("gang")}>Top Gangs / Factions</Button>
+        <Button size="sm" variant={tab === "shooter" ? "default" : "outline"} onClick={() => setTab("shooter")}>Top Shooters</Button>
+        <span className="text-[11px] text-muted-foreground ml-auto">{rows.length} entries</span>
       </div>
+
+      <Card className="glass-ice p-0 overflow-x-auto">
+        <table className="w-full text-xs min-w-[860px]">
+          <thead>
+            <tr className="text-left uppercase tracking-widest text-muted-foreground border-b border-border bg-card/20">
+              <th className="px-2 py-2">Pos</th>
+              <th className="px-2 py-2">{tab === "gang" ? "Gang / Faction" : "Player"}</th>
+              <th className="px-2 py-2">{tab === "gang" ? "Top Player" : "Gang & Faction"}</th>
+              <th className="px-2 py-2 text-center">TS</th>
+              <th className="px-2 py-2 text-center">W</th>
+              <th className="px-2 py-2 text-center">L</th>
+              <th className="px-2 py-2 text-center">D</th>
+              <th className="px-2 py-2 text-center">P</th>
+              <th className="px-2 py-2 text-center">PTS</th>
+              <th className="px-2 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={10} className="p-6 text-center text-muted-foreground">No entries yet.</td></tr>}
+            {rows.map((r, i) => {
+              const dirty = !!edits[rowKey(r)];
+              return (
+                <tr key={r.name} className="border-b border-border/40">
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold w-5 text-right">{i + 1}</span>
+                      <button onClick={() => move(r, -1)} disabled={i === 0} className="text-muted-foreground disabled:opacity-30 hover:text-primary"><ChevronLeft className="h-3.5 w-3.5 rotate-90" /></button>
+                      <button onClick={() => move(r, 1)} disabled={i === rows.length - 1} className="text-muted-foreground disabled:opacity-30 hover:text-primary"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5 font-bold whitespace-nowrap">{r.name}{r.is_override && <Badge variant="outline" className="ml-1 text-[8px]">manual</Badge>}</td>
+                  <td className="px-2 py-1.5">
+                    <Input value={field(r, tab === "gang" ? "top_player" : "gang_faction") ?? ""} onChange={(e) => setField(r, tab === "gang" ? "top_player" : "gang_faction", e.target.value)} className="h-8 w-32" />
+                  </td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "TS") ?? 0} onChange={(e) => setField(r, "TS", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "W") ?? 0} onChange={(e) => setField(r, "W", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "L") ?? 0} onChange={(e) => setField(r, "L", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "D") ?? 0} onChange={(e) => setField(r, "D", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "P") ?? 0} onChange={(e) => setField(r, "P", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={field(r, "PTS") ?? 0} onChange={(e) => setField(r, "PTS", e.target.value)} className={numCls} /></td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant={dirty ? "default" : "outline"} className="h-8" onClick={() => saveRow(r)} disabled={savingKey === rowKey(r)}><Check className="h-3 w-3" /></Button>
+                      {r.is_override && <Button size="sm" variant="outline" className="h-8" title="Reset to auto stats" onClick={() => resetRow(r)}><RotateCw className="h-3 w-3" /></Button>}
+                      <Button size="sm" variant="destructive" className="h-8" title="Remove from leaderboard" onClick={() => hideRow(r)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }
@@ -3054,7 +4113,7 @@ function BetTrackerPanel() {
 
   async function load() {
     let qb = supabase.from("bets")
-      .select("*, profiles!bets_user_profile_fkey(full_name,email,ingame_name), bet_selections(*, matches!match_id(name))")
+      .select("*, profiles!user_id(full_name,email,ingame_name), bet_selections(*, matches!match_id(name))")
       .order("created_at", { ascending: false }).limit(200);
     if (filter !== "all") qb = qb.eq("status", filter as any);
     const { data } = await qb;
@@ -3072,14 +4131,14 @@ function BetTrackerPanel() {
   async function suspend(b: any) {
     const ok = await confirm({ title: "Suspend / flag ticket?", description: `Tracking ${b.tracking_id} will stop from crediting until admin unsuspends it.`, tone: "danger", confirmText: "Suspend ticket", inputLabel: "Reason", inputPlaceholder: "Why is this betslip being suspended?" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_suspend_bet", { bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_suspend_bet", { _bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_suspend", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket suspended"); load();
     }
   }
   async function unsuspend(b: any) {
-    const { error } = await supabase.rpc("admin_unsuspend_bet", { bet_id: b.id });
+    const { error } = await supabase.rpc("admin_unsuspend_bet", { _bet_id: b.id });
     if (error) toast.error(error.message); else {
       await logAudit("bet_unsuspend", "bet", b.id, { tracking_id: b.tracking_id, user_id: b.user_id, target_user_email: b.profiles?.email });
       toast.success("Ticket reactivated"); load();
@@ -3088,7 +4147,7 @@ function BetTrackerPanel() {
   async function del(b: any) {
     const ok = await confirm({ title: "Delete ticket?", description: `Tracking ${b.tracking_id}. You can optionally refund the stake before removal.`, tone: "danger", confirmText: "Delete ticket", cancelText: "Cancel", checkboxLabel: "Refund stake to user", inputLabel: "Admin note", inputPlaceholder: "Optional reason shown in logs…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_delete_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_delete_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_delete", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket deleted & refunded" : "Ticket deleted"); load();
@@ -3097,7 +4156,7 @@ function BetTrackerPanel() {
   async function refund(b: any) {
     const ok = await confirm({ title: "Mark ticket as refunded?", description: `Refunds ${Number(b.stake).toLocaleString()} tokens and closes ${b.tracking_id}.`, confirmText: "Refund stake", inputLabel: "Refund reason", inputPlaceholder: "Reason for refund…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("admin_refund_bet", { bet_id: b.id, _reason: ok.value || undefined });
+    const { error } = await supabase.rpc("admin_refund_bet", { _bet_id: b.id, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_refund", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success("Ticket refunded"); load();
@@ -3106,7 +4165,7 @@ function BetTrackerPanel() {
   async function voidBet(b: any) {
     const ok = await confirm({ title: "Mark ticket as void?", description: `Void ${b.tracking_id}. You can return the stake while keeping the ticket record visible.`, confirmText: "Mark void", checkboxLabel: "Refund stake to user", inputLabel: "Void reason", inputPlaceholder: "Reason for voiding this ticket…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await (supabase as any).rpc("admin_void_bet", { bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
+    const { error } = await (supabase as any).rpc("admin_void_bet", { _bet_id: b.id, _refund: ok.checked, _reason: ok.value || undefined });
     if (error) toast.error(error.message); else {
       await logAudit("bet_void", "bet", b.id, { tracking_id: b.tracking_id, stake: b.stake, refunded: !!ok.checked, user_id: b.user_id, target_user_email: b.profiles?.email, reason: ok.value });
       toast.success(ok.checked ? "Ticket voided & refunded" : "Ticket voided"); load();
@@ -3182,24 +4241,64 @@ function BetTrackerPanel() {
 }
 
 function TasksAchievementsPanel() {
+  return <TasksAchievementsPanelInner />;
+}
+
+function TasksBackgroundControl() {
+  const [bg, setBg] = useState<{ url: string | null; fit: string; pos: string }>({ url: null, fit: "cover", pos: "center" });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    supabase.from("app_settings").select("tasks_bg_url,tasks_bg_fit,tasks_bg_position").eq("id", 1).maybeSingle()
+      .then(({ data }) => { if (data) setBg({ url: (data as any).tasks_bg_url ?? null, fit: (data as any).tasks_bg_fit ?? "cover", pos: (data as any).tasks_bg_position ?? "center" }); });
+  }, []);
+  async function save() {
+    setSaving(true);
+    const { error } = await (supabase as any).from("app_settings").update({ tasks_bg_url: bg.url, tasks_bg_fit: bg.fit, tasks_bg_position: bg.pos }).eq("id", 1);
+    setSaving(false);
+    if (error) toast.error(error.message); else toast.success("Tasks page background saved");
+  }
+  return (
+    <Card className="glass p-4 space-y-3">
+      <div className="flex items-center gap-2 font-bold"><ImageIcon className="h-4 w-4 text-primary" />Tasks Page Background</div>
+      <ImageSettingControl label="Background image" value={bg.url} onChange={(url) => setBg((p) => ({ ...p, url }))} fit={bg.fit} onFitChange={(v) => setBg((p) => ({ ...p, fit: v }))} position={bg.pos} onPositionChange={(v) => setBg((p) => ({ ...p, pos: v }))} />
+      <Button variant="outline" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save background"}</Button>
+    </Card>
+  );
+}
+
+function TasksAchievementsPanelInner() {
   const [users, setUsers] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [achievements, setAchievements] = useState<any[]>([]);
-  const [draft, setDraft] = useState({ user_id: "", title: "", description: "", reward_tokens: 0 });
+  const [draft, setDraft] = useState({ user_id: "", title: "", description: "", reward_tokens: 0, reward_kind: "tokens", target_progress: 1, period: "once", ends_at: "", banner_url: "" });
   const [ach, setAch] = useState({ user_id: "", code: "", title: "", description: "", icon: "🏆" });
   async function load() {
     const [{ data: u }, { data: t }, { data: a }] = await Promise.all([
       supabase.from("profiles").select("id,full_name,email").order("created_at", { ascending: false }).limit(500),
-      supabase.from("user_tasks").select("*, profiles!user_tasks_user_profile_fkey(full_name,email)").order("created_at", { ascending: false }).limit(200),
-      supabase.from("user_achievements").select("*, profiles!user_achievements_user_profile_fkey(full_name,email)").order("awarded_at", { ascending: false }).limit(200),
+      supabase.from("user_tasks").select("*, profiles!user_id(full_name,email)").order("created_at", { ascending: false }).limit(200),
+      supabase.from("user_achievements").select("*, profiles!user_id(full_name,email)").order("awarded_at", { ascending: false }).limit(200),
     ]);
     setUsers(u ?? []); setTasks(t ?? []); setAchievements(a ?? []);
   }
   useEffect(() => { load(); }, []);
   async function createTask() {
     if (!draft.user_id || !draft.title) { toast.error("Pick a user and enter a task title"); return; }
-    const { error } = await supabase.from("user_tasks").insert({ user_id: draft.user_id, title: draft.title, description: draft.description || null, reward_tokens: draft.reward_tokens || 0 });
-    if (error) toast.error(error.message); else { await logAudit("task_assigned", "user_task", undefined, { target_user_id: draft.user_id, target_name: draft.title, reward_tokens: draft.reward_tokens }); toast.success("Task assigned"); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0 }); load(); }
+    const rows = draft.user_id === "__all__"
+      ? users.map((u) => u.id)
+      : [draft.user_id];
+    const payload = rows.map((uid) => ({
+      user_id: uid,
+      title: draft.title,
+      description: draft.description || null,
+      reward_tokens: draft.reward_tokens || 0,
+      reward_kind: draft.reward_kind || "tokens",
+      target_progress: Math.max(1, draft.target_progress || 1),
+      period: draft.period || "once",
+      ends_at: draft.ends_at ? new Date(draft.ends_at).toISOString() : null,
+      banner_url: draft.banner_url || null,
+    }));
+    const { error } = await supabase.from("user_tasks").insert(payload);
+    if (error) toast.error(error.message); else { toast.success(`Task assigned to ${rows.length} user(s)`); setDraft({ user_id: "", title: "", description: "", reward_tokens: 0, reward_kind: "tokens", target_progress: 1, period: "once", ends_at: "", banner_url: "" }); load(); }
   }
   async function markDone(task: any) {
     await supabase.from("user_tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", task.id);
@@ -3208,7 +4307,6 @@ function TasksAchievementsPanel() {
       if (p) await supabase.from("profiles").update({ token_balance: (p.token_balance ?? 0) + task.reward_tokens }).eq("id", task.user_id);
     }
     await supabase.from("notifications").insert({ user_id: task.user_id, title: "Task completed", body: `${task.title}${task.reward_tokens ? ` · +${task.reward_tokens} tokens` : ""}` });
-    await logAudit("task_completed", "user_task", task.id, { target_user_id: task.user_id, target_name: task.title, reward_tokens: task.reward_tokens });
     toast.success("Task completed"); load();
   }
   async function awardAchievement() {
@@ -3219,29 +4317,62 @@ function TasksAchievementsPanel() {
     });
     if (error) { toast.error(error.message); return; }
     await supabase.from("notifications").insert({ user_id: ach.user_id, title: "Achievement unlocked! 🏆", body: `${ach.icon} ${ach.title}` });
-    await logAudit("achievement_awarded", "achievement", undefined, { target_user_id: ach.user_id, target_name: ach.title, code: ach.code });
     toast.success("Achievement awarded");
     setAch({ user_id: "", code: "", title: "", description: "", icon: "🏆" });
     load();
   }
   async function revokeAchievement(id: string) {
     await supabase.from("user_achievements").delete().eq("id", id);
-    await logAudit("achievement_revoked", "achievement", id);
     toast.success("Revoked"); load();
   }
   return (
     <div className="space-y-4">
+      <TasksBackgroundControl />
       <Card className="glass-strong p-4 space-y-3">
         <div className="flex items-center gap-2 font-bold"><ClipboardList className="h-4 w-4 text-primary" />User Tasks</div>
         <div className="grid md:grid-cols-4 gap-2">
           <Select value={draft.user_id} onValueChange={(v) => setDraft({ ...draft, user_id: v })}>
             <SelectTrigger><SelectValue placeholder="Assign to user" /></SelectTrigger>
-            <SelectContent>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>)}</SelectContent>
+            <SelectContent><SelectItem value="__all__">★ All users</SelectItem>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>)}</SelectContent>
           </Select>
           <Input placeholder="Task title" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
           <Input placeholder="Description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
           <Input type="number" placeholder="Reward tokens" value={draft.reward_tokens || ""} onChange={(e) => setDraft({ ...draft, reward_tokens: Number(e.target.value) })} />
         </div>
+        <div className="grid md:grid-cols-4 gap-2">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">Reward kind</label>
+            <Select value={draft.reward_kind} onValueChange={(v) => setDraft({ ...draft, reward_kind: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tokens">Tokens</SelectItem>
+                <SelectItem value="cashback">Cash-back</SelectItem>
+                <SelectItem value="discount">Discount token</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">Target progress</label>
+            <Input type="number" min={1} value={draft.target_progress} onChange={(e) => setDraft({ ...draft, target_progress: Number(e.target.value) })} />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">Period</label>
+            <Select value={draft.period} onValueChange={(v) => setDraft({ ...draft, period: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="once">One-off</SelectItem>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-muted-foreground">Ends at (countdown)</label>
+            <Input type="datetime-local" value={draft.ends_at} onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })} />
+          </div>
+        </div>
+        <ImageSettingControl label="Task banner image" value={draft.banner_url} onChange={(url) => setDraft({ ...draft, banner_url: url || "" })} />
         <Button className="btn-luxury" onClick={createTask}><Plus className="h-4 w-4 mr-1" />Assign task</Button>
       </Card>
       <div className="grid lg:grid-cols-2 gap-4">
@@ -3289,7 +4420,7 @@ function PromoRequestsPanel() {
   const [filter, setFilter] = useState<string>("pending");
   async function load() {
     let qb = supabase.from("promo_code_requests")
-      .select("*, profiles!promo_code_requests_user_profile_fkey(full_name,email)")
+      .select("*, profiles!user_id(full_name,email)")
       .order("created_at", { ascending: false });
     if (filter !== "all") qb = qb.eq("status", filter);
     const { data } = await qb;
@@ -3304,13 +4435,13 @@ function PromoRequestsPanel() {
   async function approve(r: any) {
     const ok = await confirm({ title: "Approve & generate code?", description: `Will create a ${Number(r.amount).toLocaleString()}-token promo code with ${r.usage_limit} uses.`, confirmText: "Approve", inputLabel: "Note to sponsor", inputPlaceholder: "Optional approval note…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("approve_promo_request", { id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("approve_promo_request", { _id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Promo code approved & generated"); load(); }
   }
   async function decline(r: any) {
     const ok = await confirm({ title: "Decline request?", tone: "danger", confirmText: "Decline", inputLabel: "Reason", inputPlaceholder: "Tell the sponsor why it was declined…" });
     if (!ok || typeof ok !== "object") return;
-    const { error } = await supabase.rpc("decline_promo_request", { id: r.id, _note: ok.value || undefined });
+    const { error } = await supabase.rpc("decline_promo_request", { _id: r.id, _note: ok.value || undefined });
     if (error) toast.error(error.message); else { toast.success("Request declined"); load(); }
   }
 
@@ -3585,14 +4716,14 @@ function HouseWalletPanel() {
       confirmText: next ? "Pause Wallet" : "Resume Wallet",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("house_set_paused", { paused: next, reason: next ? (pauseReason || undefined) : undefined });
+    const { error } = await supabase.rpc("house_set_paused", { _paused: next, _reason: next ? (pauseReason || undefined) : undefined });
     if (error) toast.error(error.message);
     else { toast.success(next ? "Payouts paused" : "Payouts resumed"); setPauseReason(""); }
   }
 
   async function adjust() {
     if (!adjAmt || !adjReason.trim()) { toast.error("Amount and reason required"); return; }
-    const { error } = await supabase.rpc("house_manual_adjust", { amount: adjAmt, _reason: adjReason.trim() });
+    const { error } = await supabase.rpc("house_manual_adjust", { _amount: adjAmt, _reason: adjReason.trim() });
     if (error) { toast.error(error.message); return; }
     toast.success("Wallet adjusted");
     setAdjustOpen(false); setAdjAmt(0); setAdjReason("");
@@ -3793,23 +4924,29 @@ function ChallengesAdminPanel() {
 
 function SeasonsAdminPanel() {
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({ name: "", description: "", banner_file: null as File | null, starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
+  const [form, setForm] = useState<any>({ name: "", description: "", banner_url: "", starts_at: new Date().toISOString().slice(0, 16), ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16), is_active: true });
+  const [bannerBusy, setBannerBusy] = useState(false);
   const load = async () => {
-    const { data } = await (supabase as any).from("seasons_public").select("*").order("starts_at", { ascending: false });
-    setList(await withResolvedMedia((data ?? []) as any[], "season-banners", "banner_url", "banner_signed_url"));
+    const { data } = await supabase.from("seasons").select("*").order("starts_at", { ascending: false });
+    setList(data ?? []);
   };
   useEffect(() => { load(); }, []);
+  async function uploadBanner(file: File) {
+    setBannerBusy(true);
+    const path = `season-${crypto.randomUUID()}.${file.name.split(".").pop() || "jpg"}`;
+    const { error } = await supabase.storage.from("ads").upload(path, file, { upsert: true });
+    setBannerBusy(false);
+    if (error) { toast.error(error.message); return; }
+    const url = supabase.storage.from("ads").getPublicUrl(path).data.publicUrl;
+    setForm((f: any) => ({ ...f, banner_url: url }));
+    toast.success("Banner uploaded");
+  }
   async function save() {
     if (!form.name) return toast.error("Name required");
-    let banner_url: string | null = null;
-    if (form.banner_file) {
-      try { banner_url = await uploadStoragePath("season-banners", "season", form.banner_file); }
-      catch (e: any) { toast.error(e.message); return; }
-    }
-    const { error } = await supabase.from("seasons").insert({ name: form.name, description: form.description || null, banner_url, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString(), is_active: form.is_active });
+    const { error } = await supabase.from("seasons").insert({ ...form, starts_at: new Date(form.starts_at).toISOString(), ends_at: new Date(form.ends_at).toISOString() });
     if (error) return toast.error(error.message);
     toast.success("Season created");
-    setForm({ ...form, name: "", description: "", banner_file: null });
+    setForm({ ...form, name: "", description: "", banner_url: "" });
     load();
   }
   async function toggle(s: any) {
@@ -3828,7 +4965,15 @@ function SeasonsAdminPanel() {
         <div className="font-bold">Create Season</div>
         <div className="grid md:grid-cols-2 gap-2">
           <Input placeholder="Season name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input type="file" accept="image/*" onChange={(e) => setForm({ ...form, banner_file: e.target.files?.[0] ?? null })} />
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Season banner image (upload from device — optional)</label>
+            <div className="flex items-center gap-2">
+              {form.banner_url
+                ? <img src={form.banner_url} alt="" className="h-9 w-16 rounded object-cover border border-primary/30" />
+                : <div className="h-9 w-16 rounded bg-primary/15 grid place-items-center text-primary"><ImageIcon className="h-4 w-4" /></div>}
+              <Input type="file" accept="image/*" disabled={bannerBusy} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); }} />
+            </div>
+          </div>
           <Input type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
           <Input type="datetime-local" value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} />
         </div>
@@ -3838,7 +4983,6 @@ function SeasonsAdminPanel() {
       <div className="space-y-2">
         {list.map((s) => (
           <Card key={s.id} className="p-3 flex items-center justify-between gap-3">
-            {(s.banner_signed_url || s.banner_url) && <img src={s.banner_signed_url || s.banner_url} alt="" className="h-12 w-20 rounded object-cover border border-border" />}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2"><Badge variant="outline" className={s.is_active ? "border-emerald-500/50 text-emerald-300" : ""}>{s.is_active ? "ACTIVE" : "INACTIVE"}</Badge><span className="font-bold">{s.name}</span></div>
               <div className="text-xs text-muted-foreground">{new Date(s.starts_at).toLocaleDateString()} → {new Date(s.ends_at).toLocaleDateString()}</div>
@@ -4009,6 +5153,109 @@ function TokenMovementPanel() {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Attendance log — every side marked Present or Absent, with who they were
+ * scheduled against and the match timestamp. Filterable by status and name.
+ */
+function AttendancePanel() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "present" | "absent">("all");
+  const [q, setQ] = useState("");
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("matches")
+      .select("id,name,match_kind,status,start_time,settled_at,created_at,home_present,away_present,home_team:teams!home_team_id(name),away_team:teams!away_team_id(name),home_player:players!home_player_id(name),away_player:players!away_player_id(name)")
+      .neq("match_kind", "future")
+      .order("start_time", { ascending: false, nullsFirst: false })
+      .limit(1000);
+    const out: any[] = [];
+    (data ?? []).forEach((m: any) => {
+      const homeName = (m.match_kind === "shooter" ? m.home_player?.name : m.home_team?.name) ?? "Home";
+      const awayName = (m.match_kind === "shooter" ? m.away_player?.name : m.away_team?.name) ?? "Away";
+      const when = m.settled_at ?? m.start_time ?? m.created_at;
+      if (m.home_present !== null && m.home_present !== undefined)
+        out.push({ key: m.id + "-h", name: homeName, present: m.home_present === true, opponent: awayName, match: m.name, kind: m.match_kind, status: m.status, when });
+      if (m.away_present !== null && m.away_present !== undefined)
+        out.push({ key: m.id + "-a", name: awayName, present: m.away_present === true, opponent: homeName, match: m.name, kind: m.match_kind, status: m.status, when });
+    });
+    setRows(out);
+    setLoading(false);
+  }
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("admin-attendance")
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  const filtered = rows.filter((r) => {
+    if (filter === "present" && !r.present) return false;
+    if (filter === "absent" && r.present) return false;
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase();
+      if (!r.name.toLowerCase().includes(needle) && !r.opponent.toLowerCase().includes(needle) && !(r.match ?? "").toLowerCase().includes(needle)) return false;
+    }
+    return true;
+  });
+  const presentCount = rows.filter((r) => r.present).length;
+  const absentCount = rows.length - presentCount;
+
+  return (
+    <div className="space-y-4">
+      <Card className="glass-strong p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Eye className="h-4 w-4 text-primary" />
+          <div className="font-bold tracking-wide">Player Attendance Log</div>
+          <Badge variant="outline" className="ml-auto border-emerald-500/40 text-emerald-400">{presentCount} present</Badge>
+          <Badge variant="outline" className="border-destructive/40 text-destructive">{absentCount} absent</Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search player, opponent or match…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="flex gap-1">
+            {(["all", "present", "absent"] as const).map((f) => (
+              <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} className="capitalize" onClick={() => setFilter(f)}>{f}</Button>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <Card className="border-primary/20 bg-card/60 overflow-hidden">
+        <div className="grid grid-cols-[1.4fr_0.8fr_1.4fr_1.2fr] gap-2 px-3 py-2 border-b border-primary/20 text-[10px] uppercase tracking-widest text-muted-foreground bg-gradient-to-r from-primary/10 to-transparent">
+          <div>Player / Side</div><div>Status</div><div>Scheduled vs</div><div>When</div>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto divide-y divide-border/40">
+          {loading && <div className="p-3 text-xs text-muted-foreground">Loading…</div>}
+          {!loading && filtered.length === 0 && <div className="p-3 text-xs text-muted-foreground">No attendance records match this filter.</div>}
+          {filtered.map((r) => (
+            <div key={r.key} className="grid grid-cols-[1.4fr_0.8fr_1.4fr_1.2fr] gap-2 px-3 py-2 text-xs items-center hover:bg-primary/5">
+              <div className="min-w-0">
+                <div className="font-bold truncate">{r.name}</div>
+                <div className="text-[9px] text-muted-foreground truncate">{r.match}</div>
+              </div>
+              <div>
+                {r.present ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-400 font-bold"><Check className="h-3 w-3" />Present</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-destructive font-bold"><X className="h-3 w-3" />Absent</span>
+                )}
+              </div>
+              <div className="truncate text-muted-foreground">vs <span className="text-foreground font-semibold">{r.opponent}</span></div>
+              <div className="text-[10px] text-muted-foreground tabular-nums">{r.when ? new Date(r.when).toLocaleString() : "—"}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }
